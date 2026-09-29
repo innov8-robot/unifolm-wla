@@ -271,11 +271,11 @@ Référence complète : section 9 de `docs/G1D_Constats.md`.
 
 ## 10. Git, données et sécurité
 
-- **Enregistrements** : `teleoperation/.../teleop/utils/data/`, soit 12 Go. Ils sont **hors git**, exclus par `data/`.
-  - `mon_test` : 51 épisodes, au bon format stéréo.
-  - `pick_rgbd*`, `pick_cube_rgbd`, `test_controller` : faits avec l'Orbbec, donc **pas au format WLA**. Leur suppression reste à décider.
+- **Enregistrements** : `teleoperation/.../teleop/utils/data/`, **hors git**, exclus par `data/`.
+  - `mon_test` : 51 épisodes, 1,9 Go, au bon format stéréo.
+  - Les enregistrements Orbbec ont été **supprimés** le 29 septembre 2026, soit 9,8 Go. Ils n'étaient pas au format WLA.
 - **Partage des données** : un dataset Hugging Face **privé**, une fois converties.
-- **Ancien dépôt de téléop** : `innov8-robot/teleoperation`. Son historique est sauvegardé dans `../_backup_teleoperation_git_20260929/`. Il contient encore le mot de passe SSH du robot : le passer en privé ou changer le mot de passe.
+- **Ancien dépôt de téléop** : `innov8-robot/teleoperation`, laissé tel quel. Son historique est sauvegardé dans `../_backup_teleoperation_git_20260929/`. Il contient le mot de passe SSH du robot.
 - **Hors git aussi** : les meshes de la pièce **Novares**, possiblement confidentiels, les certificats du casque, les réglages Claude locaux et la référence de hauteur de colonne.
 - **Fork public** : relire avant de pousser tout ce qui touche au client ou au réseau interne. Les docs citent des IP du réseau robot et des noms de projets internes.
 - **Docs en Markdown** : le `.gitignore` d'Unitree ignore les `.md` des sous-dossiers. Nos docs sont réintégrées par des exceptions explicites. Pour un nouveau `.md` dans un sous-dossier, ajouter une exception.
