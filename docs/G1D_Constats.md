@@ -193,6 +193,42 @@ MUJOCO_GL=egl python sim/smoke.py    # depuis la racine du dépôt
 
 Tenue sous gravité, IK aller-retour, pose de travail, suivi cartésien à 30 Hz, refus d'une cible hors d'atteinte, pinces, sauvegarde et restauration d'état et rendu des trois caméras fonctionnent.
 
+### Caméra de tête calée sur l'entraînement (29 septembre 2026)
+
+L'utilisateur a confirmé que le G1-D utilise la **caméra stéréo de tête stock**. La caméra RGBD du torse a été retirée de la sim, qui ne rend plus que du RGB.
+
+**[VÉRIFIÉ]** Métadonnées des datasets G1 Dex1 en format LeRobot v3.0, par exemple `G1_Dex1_Stack_Block` :
+
+- toutes les vues sont en **640×480 à 30 fps** ;
+- la tête existe en brut (`head_stereo_left`) et en rectifié (`head_stereo_left_rec`). WLA utilise la vue rectifiée ;
+- les datasets enregistrent la pose d'une caméra `d435` et celle du buste dans le repère base.
+
+**[VÉRIFIÉ]** La pose `d435` dans `torso_link` est **constante** sur tout un épisode : xyz (0.0576, 0.0175, 0.4299) et tangage 0.8308 rad. C'est un montage fixe.
+
+**[VÉRIFIÉ]** Le G1 manipule le **buste penché** de 0.136 rad par rapport au bassin, en médiane. La caméra plonge alors de 55°. Buste droit, elle ne plonge que de 49°.
+
+**[INFÉRÉ]** Intrinsèques de l'œil gauche rectifié, estimées en projetant les poses effecteur enregistrées sur 7 images :
+
+| Paramètre | Estimation |
+|---|---|
+| Focale | environ 310 px à 640×480 |
+| Champ | environ 91° horizontal et 75° vertical |
+| Décalage de l'œil gauche | environ 7 cm vers la gauche de la pose `d435` |
+| Erreur de reprojection | 12 à 18 px |
+
+Une hypothèse plus physique, avec l'œil à 3 cm de l'axe, suit aussi bien les pinces à 10 ou 20 px près. Le décalage latéral est donc peu contraint. **À remplacer par la vraie calibration de la stéréo de tête de notre G1-D.**
+
+Ce qui a été fait dans la sim :
+
+- caméra `head_left_cam` sur `torso_link`, à la pose ci-dessus, fovy 75° ;
+- noms des vues alignés sur les rôles WLA : `head_left`, `cam_wrist_left` et `cam_wrist_right` ;
+- buste incliné à 0.136 rad par `go_ready`, mains tenues en cartésien pendant l'inclinaison ;
+- buste compensé en gravité : la FK colle à MuJoCo à 0,1 mm près, buste droit ou penché.
+
+**Conséquence pour le vrai robot [INFÉRÉ]** : pour coller à l'entraînement, le G1-D devrait lui aussi manipuler buste penché de 0.136 rad, avec son joint de tangage. La hauteur de la caméra par rapport aux mains est déjà proche de celle du G1, à 4 cm près.
+
+**Encore différent des images réelles** : la scène elle-même. La table est petite, le sol uniforme, l'éclairage simple, et les intrinsèques des caméras de poignet ne sont pas calées.
+
 ### Ce qui colle déjà avec WLA
 
 - **Cadence** : contrôle à 30 Hz, comme les chunks WLA de 30 pas par seconde.
@@ -206,7 +242,7 @@ Tenue sous gravité, IK aller-retour, pose de travail, suivi cartésien à 30 Hz
 |---|---|---|---|
 | Repère des poses | monde MuJoCo | repère base `B` du G1, au bassin | **[INCONNU]** transformation monde → `B` à définir |
 | Point effecteur | `gripper_base_link` + 10,5 cm le long des doigts | pose `ee_pose_gripper_base` du G1 | **[INCONNU]** quel point et quels axes Unitree utilise |
-| Caméra haute | `torso_rgbd`, monoculaire sur le torse, fovy 65° | vue gauche rectifiée de la stéréo de tête | **[INCONNU]** caméra réelle de notre G1-D |
+| Caméra haute | `head_left_cam`, pose d435 du G1, fovy 75° | vue gauche rectifiée de la stéréo de tête | **Fait**, intrinsèques estimées |
 | Caméras poignet | fovy 110° | intrinsèques non lues | **[INCONNU]** |
 | Pince | fermeture de 0 à 1 | valeur Dex1 brute, de 0 à 5,5 environ, médiane 3,3 | **[INCONNU]** sens d'ouverture |
 | Base roulante | aucun actionneur de roue | commande de base en vitesses | non testable en sim |
@@ -252,4 +288,6 @@ Nouvelles questions :
 | 9 | Écart commande/mesure dans les données officielles | Charger un épisode Dex1 et comparer les deux poses à t. |
 | 10 | Point et axes de l'effecteur G1 dans les datasets | URDF du G1 Dex1 et code d'enregistrement Unitree. |
 | 11 | Sens et unité de la pince Dex1 dans les datasets | Tracer la pince sur un épisode avec prise. |
-| 12 | Caméra haute réelle du G1-D : stéréo de tête ou RGBD sur le torse ? | Demander à l'utilisateur. |
+| 12 | Caméra haute réelle du G1-D | **Résolu** : stéréo de tête stock. |
+| 13 | Intrinsèques et baseline de la stéréo de tête | Calibrer celle de notre G1-D. |
+| 14 | Le G1-D peut-il manipuler buste penché de 0.136 rad ? | Tester sur le robot. |

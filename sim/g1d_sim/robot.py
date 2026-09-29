@@ -15,8 +15,10 @@ mêmes conventions physiques :
 Tout le reste de mpc_any (collision, planif, perception, BT, grasping) est volontairement
 laissé de côté.
 
-Caméras, nommées comme les entrées de Hy-VLA :
-``top_head`` = ``torso_rgbd``, ``hand_left`` = ``left_wrist_cam``, ``hand_right`` = ``right_wrist_cam``.
+Caméras, nommées comme les rôles image de UnifoLM-WLA (``configs/unitree.yaml``) :
+``head_left`` = ``head_left_cam`` (œil gauche rectifié de la stéréo de tête),
+``cam_wrist_left`` = ``left_wrist_cam``, ``cam_wrist_right`` = ``right_wrist_cam``.
+RGB seulement : WLA n'utilise pas de profondeur.
 """
 
 from __future__ import annotations
@@ -35,11 +37,19 @@ SCENE_XML = ASSETS / "scene_g1d.xml"
 URDF = ASSETS / "g1_d_dex1.urdf"
 
 SIDES = ("left", "right")
-CAMERAS = {"top_head": "torso_rgbd", "hand_left": "left_wrist_cam",
-           "hand_right": "right_wrist_cam"}
+CAMERAS = {"head_left": "head_left_cam", "cam_wrist_left": "left_wrist_cam",
+           "cam_wrist_right": "right_wrist_cam"}
 
-#: colonne télescopique (2 étages) verrouillée en butée basse
-LOCKED_JOINTS = {"LZ_mt_Joint": 0.0, "LZ_it_Joint": 0.0}
+#: tangage du buste du G1 par rapport au bassin pendant la manipulation, lu dans les datasets
+#: G1 Dex1 (``observation.state.state_torso``, médiane 0.136 rad). Avec lui, la caméra de tête
+#: plonge de 55° comme à l'entraînement (au lieu de 49° buste droit).
+TORSO_PITCH = 0.136
+#: joint de tangage du buste. Il s'appelle ``Yaw_Joint`` dans la scène mais son axe est y.
+TORSO_JOINT = "Yaw_Joint"
+#: joints hors bras tenus fixes : colonne télescopique (2 étages) en butée basse, buste DROIT
+#: au reset. Le buste ne s'incline qu'une fois les bras au-dessus de la table (``go_ready``) :
+#: incliné en tuck, les poignets entrent dans la table et la physique diverge (mesuré).
+LOCKED_JOINTS = {"LZ_mt_Joint": 0.0, "LZ_it_Joint": 0.0, TORSO_JOINT: 0.0}
 #: pose de repos, bras le long du corps (config.motion._tuck de mpc_any)
 TUCK_Q = np.array([0.3, 0.0, 0.0, 1.57, 0.0, 0.0, 0.0])
 #: consigne mors Joint1_1 (m). OUVERT à -0.018 et pas -0.02 (butée : le servo s'y bat) ;
@@ -65,16 +75,15 @@ MAX_JOINT_SPEED = 3.0
 
 class G1DSim:
     def __init__(self, scene_xml: str | Path = SCENE_XML, urdf: str | Path = URDF, *,
-                 control_hz: float = 30.0, image_size: tuple[int, int] = (640, 480),
-                 depth: bool = False) -> None:
+                 control_hz: float = 30.0, image_size: tuple[int, int] = (640, 480)) -> None:
         self.m = mujoco.MjModel.from_xml_path(str(scene_xml))
         self.d = mujoco.MjData(self.m)
         self.control_hz = float(control_hz)
         self.sous_pas = max(1, int(round(1.0 / self.control_hz / self.m.opt.timestep)))
         self._image_size = tuple(image_size)
-        self._depth = depth
         self._cams: dict[str, SimCamera] = {}
 
+        self._urdf = urdf
         self.kin = {s: ArmKinematics(urdf, s, LOCKED_JOINTS) for s in SIDES}
         self._arm_qadr = {s: np.array([self.m.joint(n).qposadr[0] for n in self.kin[s].joint_names])
                           for s in SIDES}
@@ -84,6 +93,8 @@ class G1DSim:
                          for s in SIDES}
         self._arm_range = {s: self.m.jnt_range[[self.m.joint(n).id for n in self.kin[s].joint_names]]
                            for s in SIDES}
+        self._torso_act = self.m.actuator(TORSO_JOINT).id
+        self._torso_dof = self.m.joint(TORSO_JOINT).dofadr[0]
         self._grip_act = {s: self.m.actuator(f"{s}_gripper_Joint1_1").id for s in SIDES}
         self._grip_qadr = {s: self.m.joint(f"{s}_gripper_Joint1_1").qposadr[0] for s in SIDES}
         self.mj_pin = np.zeros(3)
@@ -104,12 +115,41 @@ class G1DSim:
         for _ in range(SETTLE_STEPS):
             self._apply_gravity()
             mujoco.mj_step(self.m, self.d)
-        self._refresh_mj_pin()
+        self._refresh_kinematics()
 
     def close(self) -> None:
         for cam in self._cams.values():
             cam.close()
         self._cams.clear()
+
+    def _refresh_kinematics(self) -> None:
+        """Reconstruit la FK/IK avec les angles RÉELS des joints hors bras (colonne, buste),
+        puis recale ``mj_pin``. À appeler après tout changement de ces joints."""
+        measured = {n: float(self.d.qpos[self.m.joint(n).qposadr[0]]) for n in LOCKED_JOINTS}
+        self.kin = {s: ArmKinematics(self._urdf, s, measured) for s in SIDES}
+        self._refresh_mj_pin()
+
+    def torso_pitch(self) -> float:
+        """Tangage MESURÉ du buste (rad)."""
+        return float(self.d.qpos[self.m.joint(TORSO_JOINT).qposadr[0]])
+
+    def set_torso_pitch(self, pitch: float, duration_s: float = 1.0) -> None:
+        """Rampe du tangage du buste, les deux TCP TENUS en repère monde (``track_tcp`` à
+        chaque pas, FK recalée à chaque pas puisqu'elle dépend du buste)."""
+        hold = {s: self.tcp_pose(s) for s in SIDES}
+        start = float(self.d.ctrl[self._torso_act])
+        n = max(1, int(duration_s * self.control_hz))
+        for a in np.linspace(0.0, 1.0, n + 1)[1:]:
+            self.d.ctrl[self._torso_act] = (1 - a) * start + a * pitch
+            self.step()
+            self._refresh_kinematics()
+            for s in SIDES:
+                self.track_tcp(s, hold[s])
+        for _ in range(int(0.5 * self.control_hz)):
+            self.step()
+            self._refresh_kinematics()
+            for s in SIDES:
+                self.track_tcp(s, hold[s])
 
     def _refresh_mj_pin(self) -> None:
         ak = self.kin["right"]
@@ -121,6 +161,9 @@ class G1DSim:
     def _apply_gravity(self) -> None:
         for s in SIDES:
             self.d.qfrc_applied[self._arm_dof[s]] = self.kin[s].gravity(self.arm_q(s))
+        # buste : compensation par le biais MuJoCo (gravité de tout le haut du corps), sinon
+        # le servo kp=400 fléchit de ~0.03 rad et la FK ment dès que les bras bougent
+        self.d.qfrc_applied[self._torso_dof] = self.d.qfrc_bias[self._torso_dof]
 
     def step(self, n: int = 1) -> None:
         """``n`` pas de CONTRÔLE (chacun = ``sous_pas`` pas de physique à consigne tenue)."""
@@ -193,14 +236,16 @@ class G1DSim:
         self.step(int(0.5 * self.control_hz))
 
     def go_ready(self, poses: dict[str, np.ndarray] | None = None,
-                 duration_s: float = 2.0) -> None:
-        """Les deux bras en pose de travail, pinces ouvertes. ``poses`` = TCP 4×4 monde par
-        bras ; défaut = ``READY_TCP`` pince vers le bas."""
-        # Deux temps : MONTER sur place (la main du tuck est derrière le bord de table, sous
-        # le plateau), PUIS avancer au-dessus du décor. Une rampe articulaire directe depuis
-        # le tuck fait passer la pince droite À TRAVERS le carton (mesuré : bloquée dans
-        # carton_mur2, TCP 12 cm à côté de sa cible) — le corridor que mpc_any signalait.
-        vias, targets = {}, {}
+                 duration_s: float = 2.0, torso_pitch: float = TORSO_PITCH) -> None:
+        """Les deux bras en pose de travail, pinces ouvertes, buste incliné à ``torso_pitch``.
+        ``poses`` = TCP 4×4 monde par bras ; défaut = ``READY_TCP`` pince vers le bas."""
+        # 1. Rampe articulaire directe du tuck vers la pose de travail, buste DROIT.
+        #    (L'ancienne version visait d'abord un point de passage « monter sur place » :
+        #    hors d'atteinte pince vers le bas, l'IK échouait toujours et ce trajet direct
+        #    était en fait le seul exécuté — mesuré. Il ne touche pas le décor buste droit.)
+        # 2. Inclinaison du buste à ``torso_pitch``, mains TENUES en cartésien.
+        #    Incliner le buste avant d'amener les bras fait balayer la pièce (mesuré).
+        targets = {}
         for s in SIDES:
             if poses is not None:
                 T = np.asarray(poses[s], float)
@@ -212,16 +257,10 @@ class G1DSim:
             if not ok:
                 raise RuntimeError(f"{s}: pose de travail {np.round(T[:3, 3], 3)} hors d'atteinte")
             targets[s] = q
-            p_via = self.tcp_pose(s)[:3, 3].copy()
-            p_via[2] = max(T[2, 3], VIA_Z)
-            q_via, ok = self.kin[s].ik(pin.SE3(T[:3, :3], p_via - self.mj_pin), q,
-                                       posture=self.natural_q(s))
-            if ok:
-                vias[s] = q_via
             self.set_gripper(s, 0.0)
-        if vias:
-            self.move_arms(vias, duration_s / 2)
         self.move_arms(targets, duration_s)
+        if abs(torso_pitch - self.torso_pitch()) > 1e-3:
+            self.set_torso_pitch(torso_pitch)
 
     # ------------------------------------------------------------------ pinces
     def set_gripper(self, side: str, closure: float) -> None:
@@ -236,18 +275,18 @@ class G1DSim:
 
     # ------------------------------------------------------------------ caméras
     def camera(self, name: str) -> SimCamera:
-        """``name`` = clé de ``CAMERAS`` (top_head, hand_left, hand_right) ou nom MJCF."""
+        """``name`` = clé de ``CAMERAS`` (head_left, cam_wrist_left, cam_wrist_right) ou nom MJCF."""
         mj_name = CAMERAS.get(name, name)
         if mj_name not in self._cams:
             w, h = self._image_size
-            self._cams[mj_name] = SimCamera(self.m, self.d, mj_name, w, h, depth=self._depth)
+            self._cams[mj_name] = SimCamera(self.m, self.d, mj_name, w, h)
         return self._cams[mj_name]
 
     def render(self, name: str) -> np.ndarray:
         return self.camera(name).rgb()
 
     def render_all(self) -> dict[str, np.ndarray]:
-        """Les trois vues du VLA, clés ``top_head`` / ``hand_left`` / ``hand_right``."""
+        """Les trois vues du VLA, clés ``head_left`` / ``cam_wrist_left`` / ``cam_wrist_right``."""
         return {k: self.render(k) for k in CAMERAS}
 
     # ------------------------------------------------------------------ monde / état
@@ -271,4 +310,4 @@ class G1DSim:
         mujoco.mj_forward(self.m, self.d)
 
 
-__all__ = ["G1DSim", "CAMERAS", "SIDES", "ARM_JOINTS", "SCENE_XML", "URDF"]
+__all__ = ["G1DSim", "CAMERAS", "SIDES", "ARM_JOINTS", "SCENE_XML", "URDF", "TORSO_PITCH"]

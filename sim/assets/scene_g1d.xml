@@ -509,7 +509,14 @@
                 </body>
               </body>
             </body>
-            <camera name="torso_rgbd" pos="0.068 0.012 0.344" xyaxes="0.000000 -1.000000 0.000000 0.673013 0.000000 0.739631" fovy="65.0" />
+            <!-- Caméra stéréo de tête stock, œil GAUCHE RECTIFIÉ = entrée "head_left" de WLA
+                 (observation.images.head_stereo_left_rec, 640x480, 30 fps dans les datasets G1 Dex1).
+                 Orientation et position = pose d435 du G1 dans torso_link, lue dans les datasets :
+                 xyz (0.0576, 0.0175, 0.4299), tangage 0.8308 rad (constante sur tout un épisode).
+                 + décalage de l'œil gauche de 0.074 m le long de y et fovy 75° : ESTIMÉS en
+                 projetant les poses effecteur enregistrées sur les images (erreur ~12-18 px).
+                 Voir docs/G1D_Constats.md. Hypothèse : torso_link du G1-D = torso_link du G1. -->
+            <camera name="head_left_cam" pos="0.0576 0.0915 0.4299" xyaxes="0.000000 -1.000000 0.000000 0.738455 0.000000 0.674302" fovy="75.0" />
           </body>
         </body>
       </body>
