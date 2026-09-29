@@ -296,7 +296,27 @@ Ce que le client G1-D, réel ou sim, doit envoyer au serveur WLA pour rester dan
 - **Format source** : 640×480 à 30 fps.
 - **Taille vue par le modèle** : 320×448. À l'entraînement, l'image passe en 336×448 avec antialias, puis le processeur Qwen la ramène à 320×448. Le serveur redimensionne directement en 320×448, sans antialias. La grille de patches est la même, mais le rééchantillonnage diffère un peu.
 - **Couleurs** : le serveur attend du **BGR** et le convertit en RGB. La sim rend du RGB : il faut convertir avant l'envoi.
-- **Limite de la vérification** : la config publiée du modèle Base ne liste pas ses datasets. Ce qui précède vient de la config de données du dépôt et du serveur officiel.
+- **Limite de la vérification** : la config publiée du modèle Base ne liste pas ses datasets. Ce qui précède vient de la config de données du dépôt, du serveur officiel et des métadonnées des datasets publics. Voir « Données d'entraînement » ci-dessous.
+
+### Données d'entraînement du modèle Base
+
+**[VÉRIFIÉ]** Le dépôt Hugging Face `unitreerobotics/UnifoLM-WLA-1.0-Base` ne contient **pas** de données. Il contient les poids, une config dont la liste de datasets est vide, les statistiques de normalisation et le tokenizer. La collection officielle UnifoLM-WLA-1.0 le relie à deux collections de datasets, qui correspondent aux deux clés de normalisation.
+
+| Collection | Datasets | Frames avec pose effecteur | Heures |
+|---|---|---|---|
+| UnifoLM_G1_Dex1_Dataset | 72 | 11,7 M | 108 |
+| UnifoLM_WBT_Dataset | 58 | 11,3 M | 105 |
+| Statistiques du modèle Base | — | 54,0 M | 500 |
+
+- Les normaliseurs du Base sont **identiques** aux statistiques du dépôt, par exemple les quantiles de la pose effecteur et de la pince.
+- Ils couvrent environ **2,3 fois plus de frames** que les datasets publics. **[INFÉRÉ]** Une partie des données d'entraînement n'est pas publiée. L'annonce parle de 2 500 heures.
+- **Caméras de tête des 72 datasets Dex1** :
+  - 56 ont les deux yeux, bruts et rectifiés ;
+  - 5 n'ont que les yeux bruts. Avec la config du dépôt, leur vue de tête manque et le rôle `head_left` disparaît du prompt ;
+  - 11 sont dans l'ancien format, avec des vues nommées `cam_left_high` et sans pose effecteur. Ils sont inutilisables tels quels par la config WLA.
+- **Whole-body** : 54 datasets sur 55 lisibles n'ont que les yeux bruts, ce qui est cohérent avec la config qui y prend `head_stereo_left`.
+- Toutes les vues publiques sont en 640×480 à 30 fps.
+- **Œil droit** : disponible dans presque tous les datasets, mais aucune config ne le charge.
 
 ### Prompt
 
