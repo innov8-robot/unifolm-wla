@@ -57,6 +57,7 @@ Par ordre de priorité. Cocher au fur et à mesure.
 - [ ] **Installer le poste de démo** : une table à environ 0,87 m et le buste penché d'environ 0.166 rad.
 - [x] **Valider la chaîne complète en sim** : 150 démos expertes de la tâche cube, fine-tuning de 3 000 pas, puis **23 prises sur 30** positions jamais vues. Le zero-shot faisait 0 sur 20. Voir « Validation en sim » plus bas.
 - [x] **Améliorer la vitesse et réduire le nombre de démos, en sim** : chunks entiers, 28/30 en 151 pas au lieu de 222. Real-time chunking ajouté, 148 pas avec replanification tous les 10 pas. **25 démos suffisent**, 30/30. Test à 10 démos en cours.
+- [ ] **Tâche Novares en sim** : prise peinte de mpc_any, 50 démos prêtes. Reste le fine-tuning et l'évaluation.
 - [ ] **Enregistrer, puis fine-tuner** : la recette est prête et testée sur `mon_test`. Elle tourne à environ 1,7 s par pas sur la RTX 5090. Le correctif du projecteur gelé est **vérifié** : 1 397 M paramètres entraînables, soit la tête DiT plus les 6,87 M du projecteur. Reste à enregistrer de vraies démos iso, voir les points précédents.
 
 ---
@@ -315,6 +316,29 @@ MUJOCO_GL=egl $SIMPY sim/wla_client.py --scene cube --instruction "pick up the r
 # replanification rapide avec préfixe (plus réactif)
 ... --exec-steps 10 --rtc-prefix 20
 ```
+
+### Tâche Novares en sim : prise peinte
+
+Tâche plus dure que le cube : saisir la pièce Novares par la **prise peinte** dans mpc_any, puis la soulever. Code : `sim/novares_task.py`, tâches enregistrées dans `sim/sim_tasks.py`.
+
+- **Prise** : lue dans les zones peintes de mpc_any, avec la même logique que `mpc_any/.../perception/zones_prise.py`. L'axe des mors passe entre les deux zones. On échantillonne 24 approches autour de cet axe, on rejette celles où la paume traverse la pièce, et on prend la plus verticale atteignable. La prise fait 52 mm de large, en approche verticale.
+- **Variance** : la pièce garde sa pose stable, avec ±3 cm en x et en y et ±20° de lacet à chaque épisode.
+- **Expert** : il monte la main, fait un transfert articulaire au-dessus de la pièce, puis descend. Il réussit 46 prises sur 50. L'enregistreur ne garde que les réussites propres : 50 démos gardées sur 54 essais.
+- **Fichiers non versionnés** : `sim/assets/meshes/_Novares_Piece1_centered.stl` et `.zones.json`, ce dernier copié de `mpc_any/configs/projects/usine/novares.zones.json`, même STL.
+
+```bash
+MUJOCO_GL=egl $SIMPY sim/record_sim_demos.py --task novares --n 50 --out playground/sim_raw/sim_novares
+.venv/bin/python -m g1d_wla.convert_teleop --raw-dir playground/sim_raw/sim_novares \
+    --out-dir playground/Datasets/g1d_sim_novares/sim_novares --repo-id innov8/g1d_sim_novares
+run_id=g1d_sim_novares_v1 bash examples/unifolm_wla/train_files/run_finetune_g1d.sh \
+    --datasets.vla_data.data_config_path unifolm_wla/dataloader/multi_source_dataset/configs/g1d_sim_novares.yaml \
+    --datasets.vla_data.per_device_batch_size 2 --trainer.gradient_accumulation_steps 1 --trainer.max_train_steps 3000
+MUJOCO_GL=egl $SIMPY sim/wla_client.py --scene novares --instruction "pick up the black part" \
+    --head-view raw --episodes 30 --max-steps 300 --exec-steps 30 --stop-on-success
+```
+
+- ⚠ **Conversion gourmande en mémoire vive**, à cause de l'encodage vidéo AV1. Ne pas la lancer pendant un entraînement, qui garde son optimiseur en mémoire vive.
+- **État** : démos et dataset prêts. Fine-tuning et évaluation en attente d'un créneau GPU.
 
 ### Fine-tuning
 
