@@ -16,8 +16,8 @@ journalctl -u dex1_1_gripper.service -n 10 --no-pager # OK si 2 moteurs : Side: 
 
 ## 2) PC (laptop)
 ```bash
-conda activate tv
-cd /home/thomas/Documents/project/teleoperation/Tele_OP/xr_teleoperate/teleop
+conda activate g1d_teleop          # créé par : bash teleoperation/setup_env.sh
+cd teleoperation/Tele_OP/xr_teleoperate/teleop   # depuis la racine du dépôt unifolm-wla
 
 # téléop complète (bras + pinces + caméra tête + vignettes poignets en VR)
 python teleop_hand_and_arm.py --network-interface=enx0c3796e0bc5b --img-server-ip=192.168.123.164 --input-mode=controller --ee=dex1
