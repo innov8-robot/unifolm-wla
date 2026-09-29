@@ -306,15 +306,39 @@ Ce que le client G1-D, réel ou sim, doit envoyer au serveur WLA pour rester dan
 |---|---|---|---|
 | UnifoLM_G1_Dex1_Dataset | 72 | 11,7 M | 108 |
 | UnifoLM_WBT_Dataset | 58 | 11,3 M | 105 |
+| UniBot-V1 Challenge Dataset, Dex1 | 32 | 18,3 M | 169 |
+| **Total public** | 162 | 41,3 M | 382 |
 | Statistiques du modèle Base | — | 54,0 M | 500 |
 
 - Les normaliseurs du Base sont **identiques** aux statistiques du dépôt, par exemple les quantiles de la pose effecteur et de la pince.
-- Ils couvrent environ **2,3 fois plus de frames** que les datasets publics. **[INFÉRÉ]** Une partie des données d'entraînement n'est pas publiée. L'annonce parle de 2 500 heures.
+- Les datasets publics couvrent **76 %** des frames des statistiques. **[INFÉRÉ]** Le reste n'est pas publié.
 - **Caméras de tête des 72 datasets Dex1** :
   - 56 ont les deux yeux, bruts et rectifiés ;
   - 5 n'ont que les yeux bruts. Avec la config du dépôt, leur vue de tête manque et le rôle `head_left` disparaît du prompt ;
   - 11 sont dans l'ancien format, avec des vues nommées `cam_left_high` et sans pose effecteur. Ils sont inutilisables tels quels par la config WLA.
 - **Whole-body** : 54 datasets sur 55 lisibles n'ont que les yeux bruts, ce qui est cohérent avec la config qui y prend `head_stereo_left`.
+- **UniBot** : les 32 datasets n'ont que les yeux **bruts**. Ils ne sont pas dans la config du dépôt.
+
+**[VÉRIFIÉ]** Répartition des frames publiques avec pose effecteur selon la vue de tête :
+
+| Vue de tête disponible | Frames | Part |
+|---|---|---|
+| Œil gauche brut seulement : UniBot, WBT, 5 Dex1 | 30,8 M | 75 % |
+| Œil gauche rectifié et brut : 56 Dex1, 1 WBT | 10,4 M | 25 % |
+
+**Conséquence** : la vue rectifiée n'est **pas** majoritaire. La config Dex1 du dépôt prend la rectifiée, mais la majorité des données publiques n'a que la brute. **[INCONNU]** Quelle vue Unitree a donnée au modèle Base pour UniBot et pour les données privées.
+
+**[VÉRIFIÉ]** Écart entre les deux vues, mesuré sur Stack_Block par appariement de points :
+
+| Mesure | Valeur |
+|---|---|
+| Zoom du rectifié par rapport au brut | ×1,116 |
+| Décalage de l'axe optique | 3,3° |
+| Déplacement médian d'un point | 24 px |
+| Résidu après homographie, distorsion | 1 à 2 px |
+| Champ vertical, rectifié puis brut | environ 75° puis 81° |
+
+La sim propose les deux vues : `G1DSim(head_view="rec")` par défaut, ou `head_view="raw"`. **Recommandation** : ne pas trancher à l'aveugle. Tester les deux en zero-shot, puis fine-tuner avec la vue que l'on enregistre sur le G1-D. Le modèle a vu les deux.
 - Toutes les vues publiques sont en 640×480 à 30 fps.
 - **Œil droit** : disponible dans presque tous les datasets, mais aucune config ne le charge.
 

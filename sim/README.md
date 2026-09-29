@@ -15,7 +15,7 @@ sim/
 │   ├── robot.py           # G1DSim : physique, bras, pinces, caméras, save/restore
 │   ├── kinematics.py      # ArmKinematics (Pinocchio, DLS) — mêmes constantes que mpc_any
 │   └── camera.py          # SimCamera (RGB seulement)
-└── smoke.py               # 21 vérifications + les 3 vues en PNG dans smoke_out/
+└── smoke.py               # 22 vérifications + les 3 vues en PNG dans smoke_out/
 ```
 
 ## Lancer
@@ -55,7 +55,7 @@ snap = sim.save_state()        # restore_state(snap)
 
 | | |
 |---|---|
-| Caméras | rôles WLA : `head_left` = `head_left_cam`, œil gauche rectifié de la stéréo de tête (fovy 75°) ; `cam_wrist_left/right` = `*_wrist_cam` (fovy 110°, non calé). 640×480, RGB seulement |
+| Caméras | rôles WLA : `head_left` = `head_left_cam`, œil gauche rectifié de la stéréo de tête (fovy 75°), ou `head_left_raw_cam`, œil gauche brut (fovy 81°) avec `G1DSim(head_view="raw")` ; `cam_wrist_left/right` = `*_wrist_cam` (fovy 110°, non calé). 640×480, RGB seulement |
 | Bras | 7 DoF, ordre `shoulder_pitch, shoulder_roll, shoulder_yaw, elbow, wrist_roll, wrist_pitch, wrist_yaw` (= ordre des datasets G1, malgré les noms de leurs métadonnées) |
 | Base WLA | bassin virtuel du G1 : torse = base · translation (-0.004, 0, 0.044) · tangage du buste |
 | Effecteur WLA | `*_wrist_yaw_link` + (0.105, ±0.003, 0), orientation du poignet |

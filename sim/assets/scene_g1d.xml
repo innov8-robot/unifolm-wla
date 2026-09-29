@@ -519,6 +519,11 @@
                  projetant les poses effecteur enregistrées sur les images (erreur ~12-18 px).
                  Voir docs/G1D_Constats.md. -->
             <camera name="head_left_cam" pos="0.0576 0.0915 0.4199" xyaxes="0.000000 -1.000000 0.000000 0.738455 0.000000 0.674302" fovy="75.0" />
+            <!-- Même œil gauche, vue BRUTE (observation.images.head_stereo_left) : 3/4 des frames
+                 publiques avec pose effecteur (UniBot, WBT, 5 datasets Dex1). Déduite de la vue
+                 rectifiée par l'homographie brut -> rectifié mesurée sur Stack_Block (zoom 1.116,
+                 axe décalé de 3.3°, résidu 1-2 px de distorsion non modélisée). -->
+            <camera name="head_left_raw_cam" pos="0.0576 0.0915 0.4199" xyaxes="-0.036472 -0.998536 0.039942 0.752232 -0.001119 0.658897" fovy="81.2" />
           </body>
         </body>
       </body>

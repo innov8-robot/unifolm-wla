@@ -39,6 +39,10 @@ URDF = ASSETS / "g1_d_dex1.urdf"
 SIDES = ("left", "right")
 CAMERAS = {"head_left": "head_left_cam", "cam_wrist_left": "left_wrist_cam",
            "cam_wrist_right": "right_wrist_cam"}
+#: caméra MJCF servant le rôle ``head_left`` selon la vue voulue :
+#: ``rec`` = œil gauche rectifié (config Dex1 du dépôt), ``raw`` = œil gauche brut (config WBT,
+#: et seule vue des 32 datasets UniBot : ~3/4 des frames publiques avec pose effecteur).
+HEAD_VIEWS = {"rec": "head_left_cam", "raw": "head_left_raw_cam"}
 
 #: tangage du buste du G1 par rapport au bassin pendant la manipulation : médiane GLOBALE des
 #: statistiques d'entraînement (``observation.state.state_torso``, 54 M frames : 0.166 rad).
@@ -98,7 +102,11 @@ MAX_JOINT_SPEED = 3.0
 
 class G1DSim:
     def __init__(self, scene_xml: str | Path = SCENE_XML, urdf: str | Path = URDF, *,
-                 control_hz: float = 30.0, image_size: tuple[int, int] = (640, 480)) -> None:
+                 control_hz: float = 30.0, image_size: tuple[int, int] = (640, 480),
+                 head_view: str = "rec") -> None:
+        if head_view not in HEAD_VIEWS:
+            raise ValueError(f"head_view='{head_view}' (attendu : {list(HEAD_VIEWS)})")
+        self.cameras = dict(CAMERAS, head_left=HEAD_VIEWS[head_view])
         self.m = mujoco.MjModel.from_xml_path(str(scene_xml))
         self.d = mujoco.MjData(self.m)
         self.control_hz = float(control_hz)
@@ -358,7 +366,7 @@ class G1DSim:
     # ------------------------------------------------------------------ caméras
     def camera(self, name: str) -> SimCamera:
         """``name`` = clé de ``CAMERAS`` (head_left, cam_wrist_left, cam_wrist_right) ou nom MJCF."""
-        mj_name = CAMERAS.get(name, name)
+        mj_name = self.cameras.get(name, name)
         if mj_name not in self._cams:
             w, h = self._image_size
             self._cams[mj_name] = SimCamera(self.m, self.d, mj_name, w, h)
@@ -369,7 +377,7 @@ class G1DSim:
 
     def render_all(self) -> dict[str, np.ndarray]:
         """Les trois vues du VLA, clés ``head_left`` / ``cam_wrist_left`` / ``cam_wrist_right``."""
-        return {k: self.render(k) for k in CAMERAS}
+        return {k: self.render(k) for k in self.cameras}
 
     # ------------------------------------------------------------------ monde / état
     def object_pose(self, body: str = "piece") -> np.ndarray:
@@ -392,4 +400,4 @@ class G1DSim:
         mujoco.mj_forward(self.m, self.d)
 
 
-__all__ = ["G1DSim", "CAMERAS", "SIDES", "ARM_JOINTS", "SCENE_XML", "URDF", "TORSO_PITCH", "G1_START_Q", "G1_STANDING_LEGS"]
+__all__ = ["G1DSim", "CAMERAS", "SIDES", "ARM_JOINTS", "SCENE_XML", "URDF", "TORSO_PITCH", "G1_START_Q", "G1_STANDING_LEGS", "HEAD_VIEWS"]

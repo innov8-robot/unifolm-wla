@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from g1d_sim import CAMERAS, SIDES, G1DSim  # noqa: E402
+from g1d_sim import SIDES, G1DSim  # noqa: E402
 from g1d_sim.robot import G1_START_Q, TORSO_PITCH  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "smoke_out"
@@ -121,9 +121,13 @@ def main() -> int:
     OUT.mkdir(exist_ok=True)
     for key, img in sim.render_all().items():
         ok = img.ndim == 3 and img.shape[2] == 3 and img.std() > 1.0
-        results.append(check(ok, f"caméra {key} ({CAMERAS[key]}) {img.shape}, écart-type {img.std():.1f}"))
+        results.append(check(ok, f"caméra {key} ({sim.cameras[key]}) {img.shape}, écart-type {img.std():.1f}"))
         if iio is not None:
             iio.imwrite(OUT / f"{key}.png", img)
+    raw = sim.render("head_left_raw_cam")
+    results.append(check(raw.std() > 1.0, f"caméra head_left vue brute {raw.shape}, écart-type {raw.std():.1f}"))
+    if iio is not None:
+        iio.imwrite(OUT / "head_left_raw.png", raw)
     if iio is not None:
         print(f"vues écrites dans {OUT}/")
 
