@@ -1,0 +1,17 @@
+# Bloc head_camera à remettre dans le cam_config_server.yaml du ROBOT (PC2) :
+#   /home/unitree/unitree_eai_environment/service/teleimager/cam_config_server.yaml
+# Il remplace le bloc Orbbec (type: orbbec, enable_depth, depth_port, serial CP9JA530001G, 720x1280).
+# Caméra stéréo stock : même format que les datasets G1 Dex1 de WLA (640x480 par œil, 30 fps).
+head_camera:
+  enable_zmq: true
+  zmq_port : 55555
+  enable_webrtc: false        # chemin ZMQ via le PC, voir CAMERA_VIDEO.md §1
+  webrtc_port : 60001
+  webrtc_codec: h264
+  type: uvc
+  image_shape: [480, 1280]    # [hauteur, largeur] : 2 yeux de 640x480
+  binocular: true
+  fps: 30
+  video_id: 0
+  serial_number: 01.00.00
+  physical_path: null

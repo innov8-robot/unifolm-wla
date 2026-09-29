@@ -53,3 +53,30 @@ python teleop_hand_and_arm.py --network-interface=enx0c3796e0bc5b --img-server-i
 # avec déplacement de la base (robot debout, Regular mode R1+X)
 #   ... --ee=dex1 --motion
 ```
+
+---
+
+## Remettre la caméra stéréo stock (après l'essai Orbbec)
+
+À faire une fois sur le robot. Le code Orbbec a été retiré du dépôt : un serveur configuré en `type: orbbec` ne démarrera plus la tête.
+
+```bash
+# depuis le PC, à la racine du dépôt unifolm-wla
+scp teleoperation/robot_config/head_camera_stereo.yaml unitree@192.168.123.164:~/
+ssh unitree@192.168.123.164
+F=/home/unitree/unitree_eai_environment/service/teleimager/cam_config_server.yaml
+sudo cp $F $F.bak.$(date +%Y%m%d)            # sauvegarde
+# remplacer le bloc head_camera: de $F par le contenu de ~/head_camera_stereo.yaml, puis :
+sudo systemctl restart teleimager.service
+journalctl -u teleimager.service -n 15 --no-pager   # attendu : head_camera ... is ready
+```
+
+Vérification depuis le PC, dans l'env `g1d_teleop` :
+
+```python
+from teleimager.image_client import ImageClient
+c = ImageClient(host="192.168.123.164", request_bgr=True); c.get_cam_config()
+print(c.get_head_frame().bgr.shape)   # attendu : (480, 1280, 3)
+```
+
+Si le serveur du robot contient encore le code Orbbec, ce n'est pas gênant tant que la config est en `type: uvc`.
