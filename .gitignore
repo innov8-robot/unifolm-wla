@@ -272,3 +272,11 @@ unifolm_wla/model/framework/VLM4A/QwenGR00T_v2.py
 plot_loss.py
 2026-05-17-164700-local-command-caveatcaveat-the-messages-below.txt
 unifolm_wla/scripts
+
+# --- Portage G1-D ---
+!docs/Ma_Reflection.md
+!docs/G1D_Constats.md
+!sim/README.md
+sim/smoke_out/
+# Meshes de la pièce Novares : possiblement confidentielles, gardées hors du dépôt
+sim/assets/meshes/*Novares*

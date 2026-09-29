@@ -1,0 +1,662 @@
+<mujoco model="G1_D">
+  <compiler angle="radian" meshdir="meshes/" />
+  <asset>
+    <mesh name="AGV_link" content_type="model/stl" file="AGV_link.STL" />
+    <mesh name="Left_Wheel_Link" content_type="model/stl" file="Left_Wheel_Link.STL" />
+    <mesh name="RIght_Wheel_Link" content_type="model/stl" file="RIght_Wheel_Link.STL" />
+    <mesh name="LZ_ot_Link" content_type="model/stl" file="LZ_ot_Link.STL" />
+    <mesh name="LZ_mt_Link" content_type="model/stl" file="LZ_mt_Link.STL" />
+    <mesh name="LZ_it_Link" content_type="model/stl" file="LZ_it_Link.STL" />
+    <mesh name="Pitching_Link" content_type="model/stl" file="Pitching_Link.STL" />
+    <mesh name="Yaw_Link" content_type="model/stl" file="Yaw_Link.STL" />
+    <mesh name="torso_link" content_type="model/stl" file="torso_link.STL" />
+    <mesh name="logo_link" content_type="model/stl" file="logo_link.STL" />
+    <mesh name="head_link" content_type="model/stl" file="head_link.STL" />
+    <mesh name="left_shoulder_pitch_link" content_type="model/stl" file="left_shoulder_pitch_link.STL" />
+    <mesh name="left_shoulder_roll_link" content_type="model/stl" file="left_shoulder_roll_link.STL" />
+    <mesh name="left_shoulder_yaw_link" content_type="model/stl" file="left_shoulder_yaw_link.STL" />
+    <mesh name="left_elbow_link" content_type="model/stl" file="left_elbow_link.STL" />
+    <mesh name="left_wrist_roll_link" content_type="model/stl" file="left_wrist_roll_link.STL" />
+    <mesh name="left_wrist_pitch_link" content_type="model/stl" file="left_wrist_pitch_link.STL" />
+    <mesh name="left_wrist_yaw_link" content_type="model/stl" file="left_wrist_yaw_link.STL" />
+    <mesh name="right_shoulder_pitch_link" content_type="model/stl" file="right_shoulder_pitch_link.STL" />
+    <mesh name="right_shoulder_roll_link" content_type="model/stl" file="right_shoulder_roll_link.STL" />
+    <mesh name="right_shoulder_yaw_link" content_type="model/stl" file="right_shoulder_yaw_link.STL" />
+    <mesh name="right_elbow_link" content_type="model/stl" file="right_elbow_link.STL" />
+    <mesh name="right_wrist_roll_link" content_type="model/stl" file="right_wrist_roll_link.STL" />
+    <mesh name="right_wrist_pitch_link" content_type="model/stl" file="right_wrist_pitch_link.STL" />
+    <mesh name="right_wrist_yaw_link" content_type="model/stl" file="right_wrist_yaw_link.STL" />
+    <mesh name="dex1_base_link" content_type="model/stl" file="dex1_base_link.STL" />
+    <mesh name="dex1_base_link_part00" content_type="model/stl" file="dex1_base_link_part00.STL" />
+    <mesh name="dex1_base_link_part01" content_type="model/stl" file="dex1_base_link_part01.STL" />
+    <mesh name="dex1_base_link_part02" content_type="model/stl" file="dex1_base_link_part02.STL" />
+    <mesh name="dex1_base_link_part03" content_type="model/stl" file="dex1_base_link_part03.STL" />
+    <mesh name="dex1_base_link_part04" content_type="model/stl" file="dex1_base_link_part04.STL" />
+    <mesh name="dex1_base_link_part05" content_type="model/stl" file="dex1_base_link_part05.STL" />
+    <mesh name="dex1_base_link_part06" content_type="model/stl" file="dex1_base_link_part06.STL" />
+    <mesh name="dex1_base_link_part07" content_type="model/stl" file="dex1_base_link_part07.STL" />
+    <mesh name="dex1_base_link_part08" content_type="model/stl" file="dex1_base_link_part08.STL" />
+    <mesh name="dex1_base_link_part09" content_type="model/stl" file="dex1_base_link_part09.STL" />
+    <mesh name="dex1_base_link_part10" content_type="model/stl" file="dex1_base_link_part10.STL" />
+    <mesh name="dex1_base_link_part11" content_type="model/stl" file="dex1_base_link_part11.STL" />
+    <mesh name="dex1_base_link_part12" content_type="model/stl" file="dex1_base_link_part12.STL" />
+    <mesh name="dex1_base_link_part13" content_type="model/stl" file="dex1_base_link_part13.STL" />
+    <mesh name="dex1_base_link_part14" content_type="model/stl" file="dex1_base_link_part14.STL" />
+    <mesh name="dex1_base_link_part15" content_type="model/stl" file="dex1_base_link_part15.STL" />
+    <mesh name="dex1_base_link_part16" content_type="model/stl" file="dex1_base_link_part16.STL" />
+    <mesh name="dex1_base_link_part17" content_type="model/stl" file="dex1_base_link_part17.STL" />
+    <mesh name="dex1_base_link_part18" content_type="model/stl" file="dex1_base_link_part18.STL" />
+    <mesh name="dex1_base_link_part19" content_type="model/stl" file="dex1_base_link_part19.STL" />
+    <mesh name="dex1_base_link_part20" content_type="model/stl" file="dex1_base_link_part20.STL" />
+    <mesh name="dex1_base_link_part21" content_type="model/stl" file="dex1_base_link_part21.STL" />
+    <mesh name="dex1_base_link_part22" content_type="model/stl" file="dex1_base_link_part22.STL" />
+    <mesh name="dex1_base_link_part23" content_type="model/stl" file="dex1_base_link_part23.STL" />
+    <mesh name="dex1_Link1_1" content_type="model/stl" file="dex1_Link1_1.STL" />
+    <mesh name="dex1_Link1_2" content_type="model/stl" file="dex1_Link1_2.STL" />
+    <mesh name="dex1_Link1_2_part00" content_type="model/stl" file="dex1_Link1_2_part00.STL" />
+    <mesh name="dex1_Link1_2_part01" content_type="model/stl" file="dex1_Link1_2_part01.STL" />
+    <mesh name="dex1_Link1_2_part02" content_type="model/stl" file="dex1_Link1_2_part02.STL" />
+    <mesh name="dex1_Link1_2_part03" content_type="model/stl" file="dex1_Link1_2_part03.STL" />
+    <mesh name="dex1_Link1_2_part04" content_type="model/stl" file="dex1_Link1_2_part04.STL" />
+    <mesh name="dex1_Link1_2_part05" content_type="model/stl" file="dex1_Link1_2_part05.STL" />
+    <mesh name="dex1_Link1_2_part06" content_type="model/stl" file="dex1_Link1_2_part06.STL" />
+    <mesh name="dex1_Link1_2_part07" content_type="model/stl" file="dex1_Link1_2_part07.STL" />
+    <mesh name="dex1_Link1_2_part08" content_type="model/stl" file="dex1_Link1_2_part08.STL" />
+    <mesh name="dex1_Link1_2_part09" content_type="model/stl" file="dex1_Link1_2_part09.STL" />
+    <mesh name="dex1_Link1_2_part10" content_type="model/stl" file="dex1_Link1_2_part10.STL" />
+    <mesh name="dex1_Link1_2_part11" content_type="model/stl" file="dex1_Link1_2_part11.STL" />
+    <mesh name="dex1_Link1_2_part12" content_type="model/stl" file="dex1_Link1_2_part12.STL" />
+    <mesh name="dex1_Link1_2_part13" content_type="model/stl" file="dex1_Link1_2_part13.STL" />
+    <mesh name="dex1_Link1_2_part14" content_type="model/stl" file="dex1_Link1_2_part14.STL" />
+    <mesh name="dex1_Link1_2_part15" content_type="model/stl" file="dex1_Link1_2_part15.STL" />
+    <mesh name="dex1_Link1_2_part16" content_type="model/stl" file="dex1_Link1_2_part16.STL" />
+    <mesh name="dex1_Link1_2_part17" content_type="model/stl" file="dex1_Link1_2_part17.STL" />
+    <mesh name="dex1_Link1_2_part18" content_type="model/stl" file="dex1_Link1_2_part18.STL" />
+    <mesh name="dex1_Link1_2_part19" content_type="model/stl" file="dex1_Link1_2_part19.STL" />
+    <mesh name="dex1_Link1_2_part20" content_type="model/stl" file="dex1_Link1_2_part20.STL" />
+    <mesh name="dex1_Link1_2_part21" content_type="model/stl" file="dex1_Link1_2_part21.STL" />
+    <mesh name="dex1_Link1_2_part22" content_type="model/stl" file="dex1_Link1_2_part22.STL" />
+    <mesh name="dex1_Link1_2_part23" content_type="model/stl" file="dex1_Link1_2_part23.STL" />
+    <mesh name="dex1_Link1_3" content_type="model/stl" file="dex1_Link1_3.STL" />
+    <mesh name="dex1_Link2_1" content_type="model/stl" file="dex1_Link2_1.STL" />
+    <mesh name="dex1_Link2_2" content_type="model/stl" file="dex1_Link2_2.STL" />
+    <mesh name="dex1_Link2_2_part00" content_type="model/stl" file="dex1_Link2_2_part00.STL" />
+    <mesh name="dex1_Link2_2_part01" content_type="model/stl" file="dex1_Link2_2_part01.STL" />
+    <mesh name="dex1_Link2_2_part02" content_type="model/stl" file="dex1_Link2_2_part02.STL" />
+    <mesh name="dex1_Link2_2_part03" content_type="model/stl" file="dex1_Link2_2_part03.STL" />
+    <mesh name="dex1_Link2_2_part04" content_type="model/stl" file="dex1_Link2_2_part04.STL" />
+    <mesh name="dex1_Link2_2_part05" content_type="model/stl" file="dex1_Link2_2_part05.STL" />
+    <mesh name="dex1_Link2_2_part06" content_type="model/stl" file="dex1_Link2_2_part06.STL" />
+    <mesh name="dex1_Link2_2_part07" content_type="model/stl" file="dex1_Link2_2_part07.STL" />
+    <mesh name="dex1_Link2_2_part08" content_type="model/stl" file="dex1_Link2_2_part08.STL" />
+    <mesh name="dex1_Link2_2_part09" content_type="model/stl" file="dex1_Link2_2_part09.STL" />
+    <mesh name="dex1_Link2_2_part10" content_type="model/stl" file="dex1_Link2_2_part10.STL" />
+    <mesh name="dex1_Link2_2_part11" content_type="model/stl" file="dex1_Link2_2_part11.STL" />
+    <mesh name="dex1_Link2_2_part12" content_type="model/stl" file="dex1_Link2_2_part12.STL" />
+    <mesh name="dex1_Link2_2_part13" content_type="model/stl" file="dex1_Link2_2_part13.STL" />
+    <mesh name="dex1_Link2_2_part14" content_type="model/stl" file="dex1_Link2_2_part14.STL" />
+    <mesh name="dex1_Link2_2_part15" content_type="model/stl" file="dex1_Link2_2_part15.STL" />
+    <mesh name="dex1_Link2_2_part16" content_type="model/stl" file="dex1_Link2_2_part16.STL" />
+    <mesh name="dex1_Link2_2_part17" content_type="model/stl" file="dex1_Link2_2_part17.STL" />
+    <mesh name="dex1_Link2_2_part18" content_type="model/stl" file="dex1_Link2_2_part18.STL" />
+    <mesh name="dex1_Link2_2_part19" content_type="model/stl" file="dex1_Link2_2_part19.STL" />
+    <mesh name="dex1_Link2_2_part20" content_type="model/stl" file="dex1_Link2_2_part20.STL" />
+    <mesh name="dex1_Link2_2_part21" content_type="model/stl" file="dex1_Link2_2_part21.STL" />
+    <mesh name="dex1_Link2_2_part22" content_type="model/stl" file="dex1_Link2_2_part22.STL" />
+    <mesh name="dex1_Link2_2_part23" content_type="model/stl" file="dex1_Link2_2_part23.STL" />
+    <mesh name="dex1_Link2_3" content_type="model/stl" file="dex1_Link2_3.STL" />
+    <texture type="skybox" builtin="gradient" rgb1="0.4 0.5 0.6" rgb2="0.1 0.1 0.15" width="256" height="256" />
+    <texture name="grid" type="2d" builtin="checker" rgb1="0.2 0.25 0.3" rgb2="0.25 0.3 0.35" width="256" height="256" />
+    <material name="grid" texture="grid" texrepeat="6 6" reflectance="0.1" />
+    <mesh name="piece" file="_Novares_Piece1_centered.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part00" file="__Novares_Piece1_centered_part00.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part01" file="__Novares_Piece1_centered_part01.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part02" file="__Novares_Piece1_centered_part02.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part03" file="__Novares_Piece1_centered_part03.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part04" file="__Novares_Piece1_centered_part04.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part05" file="__Novares_Piece1_centered_part05.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part06" file="__Novares_Piece1_centered_part06.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part07" file="__Novares_Piece1_centered_part07.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part08" file="__Novares_Piece1_centered_part08.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part09" file="__Novares_Piece1_centered_part09.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part10" file="__Novares_Piece1_centered_part10.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part11" file="__Novares_Piece1_centered_part11.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part12" file="__Novares_Piece1_centered_part12.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part13" file="__Novares_Piece1_centered_part13.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part14" file="__Novares_Piece1_centered_part14.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part15" file="__Novares_Piece1_centered_part15.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part16" file="__Novares_Piece1_centered_part16.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part17" file="__Novares_Piece1_centered_part17.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part18" file="__Novares_Piece1_centered_part18.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part19" file="__Novares_Piece1_centered_part19.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part20" file="__Novares_Piece1_centered_part20.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part21" file="__Novares_Piece1_centered_part21.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part22" file="__Novares_Piece1_centered_part22.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part23" file="__Novares_Piece1_centered_part23.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part24" file="__Novares_Piece1_centered_part24.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part25" file="__Novares_Piece1_centered_part25.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part26" file="__Novares_Piece1_centered_part26.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part27" file="__Novares_Piece1_centered_part27.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part28" file="__Novares_Piece1_centered_part28.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part29" file="__Novares_Piece1_centered_part29.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part30" file="__Novares_Piece1_centered_part30.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part31" file="__Novares_Piece1_centered_part31.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part32" file="__Novares_Piece1_centered_part32.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part33" file="__Novares_Piece1_centered_part33.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part34" file="__Novares_Piece1_centered_part34.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part35" file="__Novares_Piece1_centered_part35.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part36" file="__Novares_Piece1_centered_part36.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part37" file="__Novares_Piece1_centered_part37.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part38" file="__Novares_Piece1_centered_part38.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part39" file="__Novares_Piece1_centered_part39.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part40" file="__Novares_Piece1_centered_part40.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part41" file="__Novares_Piece1_centered_part41.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part42" file="__Novares_Piece1_centered_part42.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part43" file="__Novares_Piece1_centered_part43.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part44" file="__Novares_Piece1_centered_part44.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part45" file="__Novares_Piece1_centered_part45.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part46" file="__Novares_Piece1_centered_part46.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part47" file="__Novares_Piece1_centered_part47.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part48" file="__Novares_Piece1_centered_part48.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part49" file="__Novares_Piece1_centered_part49.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part50" file="__Novares_Piece1_centered_part50.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part51" file="__Novares_Piece1_centered_part51.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part52" file="__Novares_Piece1_centered_part52.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part53" file="__Novares_Piece1_centered_part53.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part54" file="__Novares_Piece1_centered_part54.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part55" file="__Novares_Piece1_centered_part55.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part56" file="__Novares_Piece1_centered_part56.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part57" file="__Novares_Piece1_centered_part57.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part58" file="__Novares_Piece1_centered_part58.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part59" file="__Novares_Piece1_centered_part59.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part60" file="__Novares_Piece1_centered_part60.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part61" file="__Novares_Piece1_centered_part61.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part62" file="__Novares_Piece1_centered_part62.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part63" file="__Novares_Piece1_centered_part63.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part64" file="__Novares_Piece1_centered_part64.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part65" file="__Novares_Piece1_centered_part65.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part66" file="__Novares_Piece1_centered_part66.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part67" file="__Novares_Piece1_centered_part67.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part68" file="__Novares_Piece1_centered_part68.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part69" file="__Novares_Piece1_centered_part69.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part70" file="__Novares_Piece1_centered_part70.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part71" file="__Novares_Piece1_centered_part71.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part72" file="__Novares_Piece1_centered_part72.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part73" file="__Novares_Piece1_centered_part73.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part74" file="__Novares_Piece1_centered_part74.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part75" file="__Novares_Piece1_centered_part75.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part76" file="__Novares_Piece1_centered_part76.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part77" file="__Novares_Piece1_centered_part77.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part78" file="__Novares_Piece1_centered_part78.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part79" file="__Novares_Piece1_centered_part79.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part80" file="__Novares_Piece1_centered_part80.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part81" file="__Novares_Piece1_centered_part81.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part82" file="__Novares_Piece1_centered_part82.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part83" file="__Novares_Piece1_centered_part83.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part84" file="__Novares_Piece1_centered_part84.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part85" file="__Novares_Piece1_centered_part85.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part86" file="__Novares_Piece1_centered_part86.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part87" file="__Novares_Piece1_centered_part87.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part88" file="__Novares_Piece1_centered_part88.stl" scale="0.001 0.001 0.001" />
+    <mesh name="Novares_Piece1_centered_part89" file="__Novares_Piece1_centered_part89.stl" scale="0.001 0.001 0.001" />
+  </asset>
+  <worldbody>
+    <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.792157 0.819608 0.933333 1" mesh="AGV_link" pos="0 0 0.11261688240063585" />
+    <geom type="mesh" rgba="0.792157 0.819608 0.933333 1" mesh="AGV_link" pos="0 0 0.11261688240063585" />
+    <geom pos="-0.00016264 0 0.6401168824006358" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.792157 0.819608 0.933333 1" mesh="LZ_ot_Link" />
+    <geom pos="-0.00016264 0 0.6401168824006358" quat="1 0 0 0" type="mesh" rgba="0.792157 0.819608 0.933333 1" mesh="LZ_ot_Link" />
+    <body name="Left_Wheel_Link" pos="0.00022503 0.2031 0.08611688240063585">
+      <inertial pos="-3e-06 -0.000309 -2e-06" quat="0.372939 0.600752 0.60077 0.372947" mass="1.5" diaginertia="0.00276373 0.00154174 0.00154164" />
+      <joint name="Left_Wheel_Joint" pos="0 0 0" axis="0 -1 0" range="-3.1416 3.1416" actuatorfrcrange="-8 8" />
+      <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.792157 0.819608 0.933333 1" mesh="Left_Wheel_Link" />
+      <geom type="mesh" rgba="0.792157 0.819608 0.933333 1" mesh="Left_Wheel_Link" />
+    </body>
+    <body name="RIght_Wheel_Link" pos="0.00022503 -0.2031 0.08611688240063585">
+      <inertial pos="3e-06 0.000309 -2e-06" quat="0.516023 0.483432 0.483443 0.516039" mass="1.5" diaginertia="0.00276373 0.00154172 0.00154166" />
+      <joint name="Right_Wheel_Joint" pos="0 0 0" axis="0 1 0" range="-3.1416 3.1416" actuatorfrcrange="-8 8" />
+      <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.792157 0.819608 0.933333 1" mesh="RIght_Wheel_Link" />
+      <geom type="mesh" rgba="0.792157 0.819608 0.933333 1" mesh="RIght_Wheel_Link" />
+    </body>
+    <body name="LZ_mt_Link" pos="0.00022503 0 0.6501168824006358">
+      <inertial pos="0.000494 -6.2e-05 0.216016" quat="0.707107 0 0 0.707107" mass="3.3" diaginertia="0.0573529 0.0573527 0.0128473" />
+      <joint name="LZ_mt_Joint" pos="0 0 0" axis="0 0 1" type="slide" range="0 0.21" actuatorfrcrange="-500 500" />
+      <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.792157 0.819608 0.933333 1" mesh="LZ_mt_Link" />
+      <body name="LZ_it_Link" pos="0.0013627 0.00020167 0.018">
+        <inertial pos="0.0158757 -0.00132536 -0.107936" quat="0.736175 0.042947 0.0410595 0.674178" mass="5.289" diaginertia="0.15517 0.152893 0.0154348" />
+        <joint name="LZ_it_Joint" pos="0 0 0" axis="0 0 1" type="slide" range="0 0.21" actuatorfrcrange="-500 500" />
+        <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.792157 0.819608 0.933333 1" mesh="LZ_it_Link" />
+        <geom pos="-0.0013627 -0.00020167 0.008" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.792157 0.819608 0.933333 1" mesh="Pitching_Link" />
+        <geom pos="-0.0013627 -0.00020167 0.008" quat="1 0 0 0" type="mesh" rgba="0.792157 0.819608 0.933333 1" mesh="Pitching_Link" />
+        <body name="Yaw_Link" pos="0.0541373 1.483e-05 0.074">
+          <inertial pos="7.4e-05 -0.00062 0.071221" quat="0.999749 -0.0223799 0.000227644 -0.000701156" mass="1.144" diaginertia="0.00260247 0.0022047 0.00122659" />
+          <joint name="Yaw_Joint" pos="0 0 0" axis="0 1 0" range="-0.04363 2.3562" actuatorfrcrange="-80 80" />
+          <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.792157 0.819608 0.933333 1" mesh="Yaw_Link" />
+          <geom type="mesh" rgba="0.792157 0.819608 0.933333 1" mesh="Yaw_Link" />
+          <body name="torso_link" pos="-0.0023536 -4.8782e-05 0.104009">
+            <inertial pos="0.00270075 0.000679835 0.179834" quat="0.999922 -0.00504418 0.0109932 -0.0030196" mass="9.599" diaginertia="0.124074 0.111984 0.0325788" />
+            <joint name="torso_Joint" pos="0 0 0" axis="0 0 1" range="-2.7053 2.7053" actuatorfrcrange="-30 30" />
+            <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="torso_link" />
+            <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="torso_link" />
+            <geom pos="0.0039635 0 -0.054" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.2 0.2 0.2 1" mesh="logo_link" />
+            <geom pos="0.0039635 0 -0.054" quat="1 0 0 0" type="mesh" rgba="0.2 0.2 0.2 1" mesh="logo_link" />
+            <geom pos="0.0039635 0 -0.054" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.2 0.2 0.2 1" mesh="head_link" />
+            <geom pos="0.0039635 0 -0.054" type="mesh" rgba="0.2 0.2 0.2 1" mesh="head_link" />
+            <body name="left_shoulder_pitch_link" pos="0.0039563 0.10022 0.24778" quat="0.990264 0.139201 1.38722e-05 -9.86868e-05">
+              <inertial pos="0 0.035892 -0.011628" quat="0.654152 0.0130458 -0.326267 0.68225" mass="0.718" diaginertia="0.000465864 0.000432842 0.000406394" />
+              <joint name="left_shoulder_pitch_joint" pos="0 0 0" axis="0 1 0" range="-3.0892 2.6704" actuatorfrcrange="-25 25" />
+              <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_shoulder_pitch_link" />
+              <geom size="0.03 0.025" pos="0 0.04 -0.01" quat="0.707107 0 0.707107 0" type="cylinder" rgba="0.7 0.7 0.7 1" />
+              <body name="left_shoulder_roll_link" pos="0 0.038 -0.013831" quat="0.990268 -0.139172 0 0">
+                <inertial pos="-0.000227 0.00727 -0.063243" quat="0.701256 -0.0196223 -0.00710317 0.712604" mass="0.643" diaginertia="0.000691311 0.000618011 0.000388977" />
+                <joint name="left_shoulder_roll_joint" pos="0 0 0" axis="1 0 0" range="-1.5882 2.2515" actuatorfrcrange="-25 25" />
+                <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_shoulder_roll_link" />
+                <geom size="0.03 0.015" pos="-0.004 0.006 -0.053" type="cylinder" rgba="0.7 0.7 0.7 1" />
+                <body name="left_shoulder_yaw_link" pos="0 0.00624 -0.1032">
+                  <inertial pos="0.010773 -0.002949 -0.072009" quat="0.716879 -0.0964829 -0.0679942 0.687134" mass="0.734" diaginertia="0.00106187 0.00103217 0.000400661" />
+                  <joint name="left_shoulder_yaw_joint" pos="0 0 0" axis="0 0 1" range="-2.618 2.618" actuatorfrcrange="-25 25" />
+                  <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_shoulder_yaw_link" />
+                  <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="left_shoulder_yaw_link" />
+                  <body name="left_elbow_link" pos="0.015783 0 -0.080518">
+                    <inertial pos="0.064956 0.004454 -0.010062" quat="0.541765 0.636132 0.388821 0.388129" mass="0.6" diaginertia="0.000443035 0.000421612 0.000259353" />
+                    <joint name="left_elbow_joint" pos="0 0 0" axis="0 1 0" range="-1.0472 2.0944" actuatorfrcrange="-25 25" />
+                    <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_elbow_link" />
+                    <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="left_elbow_link" />
+                    <body name="left_wrist_roll_link" pos="0.1 0.00188791 -0.01">
+                      <inertial pos="0.0171394 0.000537591 4.8864e-07" quat="0.575338 0.411667 -0.574906 0.411094" mass="0.085445" diaginertia="5.48211e-05 4.96646e-05 3.57798e-05" />
+                      <joint name="left_wrist_roll_joint" pos="0 0 0" axis="1 0 0" range="-1.97222 1.97222" actuatorfrcrange="-25 25" />
+                      <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_wrist_roll_link" />
+                      <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="left_wrist_roll_link" />
+                      <body name="left_wrist_pitch_link" pos="0.038 0 0">
+                        <inertial pos="0.0229999 -0.00111685 -0.00111658" quat="0.249998 0.661363 0.293036 0.643608" mass="0.48405" diaginertia="0.000430353 0.000429873 0.000164648" />
+                        <joint name="left_wrist_pitch_joint" pos="0 0 0" axis="0 1 0" range="-1.61443 1.61443" actuatorfrcrange="-5 5" />
+                        <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_wrist_pitch_link" />
+                        <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="left_wrist_pitch_link" />
+                        <body name="left_wrist_yaw_link" pos="0.046 0 0">
+                          <inertial pos="0.00800839 0.0445059 0.0036586" quat="0.664271 0.73167 0.0738269 0.133991" mass="0.194576" diaginertia="0.000438178 0.000394232 0.000109898" />
+                          <joint name="left_wrist_yaw_joint" pos="0 0 0" axis="0 0 1" range="-1.61443 1.61443" actuatorfrcrange="-5 5" />
+                          <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_wrist_yaw_link" />
+                          <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="left_wrist_yaw_link" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part00" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part01" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part02" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part03" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part04" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part05" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part06" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part07" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part08" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part09" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part10" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part11" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part12" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part13" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part14" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part15" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part16" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part17" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part18" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part19" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part20" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part21" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part22" />
+                          <geom pos="0.0415 0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part23" />
+                          <body name="left_gripper_Link1_1" pos="0.1008 -0.03755 0.0152" quat="0.707107 0 0 -0.707107">
+                            <inertial pos="-0.0161706 0.0211979 0.00108767" quat="0.608868 0.293684 -0.610532 0.412651" mass="0.0413768" diaginertia="2.66832e-05 2.31526e-05 1.29496e-05" />
+                            <joint name="left_gripper_Joint1_1" pos="0 0 0" axis="-1 0 0" type="slide" range="-0.02 0.0245" actuatorfrcrange="-60 60" armature="0.02" damping="20" solreflimit="-200000 -2000" />
+                            <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_Link1_1" />
+                            <geom type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_Link1_1" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2" />
+                            <geom pos="-0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part00" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part01" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part02" />
+                            <geom pos="-0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part03" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part04" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part05" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part06" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part07" />
+                            <geom pos="-0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part08" />
+                            <geom pos="-0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part09" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part10" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part11" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part12" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part13" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part14" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part15" />
+                            <geom pos="-0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part16" />
+                            <geom pos="-0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part17" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part18" />
+                            <geom pos="-0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part19" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part20" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part21" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part22" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part23" />
+                            <geom pos="-0.0155165 0.038043 -0.001" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.29804 0.29804 0.29804 1" mesh="dex1_Link1_3" />
+                            <geom pos="-0.0155165 0.038043 -0.001" quat="1 0 0 0" type="mesh" rgba="0.29804 0.29804 0.29804 1" mesh="dex1_Link1_3" friction="3.0 0.15 0.005" condim="6" />
+                          </body>
+                          <body name="left_gripper_Link2_1" pos="0.1008 0.04355 -0.0152" quat="0.707107 0 0 -0.707107">
+                            <inertial pos="0.0151804 0.016693 0.0219487" quat="0.386859 0.792314 -0.242292 0.404814" mass="0.0413768" diaginertia="3.53417e-05 2.63489e-05 1.43198e-05" />
+                            <joint name="left_gripper_Joint2_1" pos="0 0 0" axis="1 0 0" type="slide" range="-0.02 0.0245" actuatorfrcrange="-60 60" armature="0.02" damping="20" solreflimit="-200000 -2000" />
+                            <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_Link2_1" />
+                            <geom type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_Link2_1" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2" />
+                            <geom pos="0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part00" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part01" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part02" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part03" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part04" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part05" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part06" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part07" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part08" />
+                            <geom pos="0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part09" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part10" />
+                            <geom pos="0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part11" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part12" />
+                            <geom pos="0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part13" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part14" />
+                            <geom pos="0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part15" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part16" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part17" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part18" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part19" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part20" />
+                            <geom pos="0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part21" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part22" />
+                            <geom pos="0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part23" />
+                            <geom pos="0.0155165 0.038043 0.0294" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.29804 0.29804 0.29804 1" mesh="dex1_Link2_3" />
+                            <geom pos="0.0155165 0.038043 0.0294" quat="1 0 0 0" type="mesh" rgba="0.29804 0.29804 0.29804 1" mesh="dex1_Link2_3" friction="3.0 0.15 0.005" condim="6" />
+                          </body>
+                          <camera name="left_wrist_cam" pos="0.105 0.0 0.115" xyaxes="0.000000 -1.000000 0.000000 0.669131 0.000000 0.743145" fovy="110.0" />
+                        </body>
+                      </body>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+            <body name="right_shoulder_pitch_link" pos="0.0039563 -0.10021 0.24778" quat="0.990264 -0.139201 1.38722e-05 9.86868e-05">
+              <inertial pos="0 -0.035892 -0.011628" quat="0.68225 -0.326267 0.0130458 0.654152" mass="0.718" diaginertia="0.000465864 0.000432842 0.000406394" />
+              <joint name="right_shoulder_pitch_joint" pos="0 0 0" axis="0 1 0" range="-3.0892 2.6704" actuatorfrcrange="-25 25" />
+              <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_shoulder_pitch_link" />
+              <geom size="0.03 0.025" pos="0 -0.04 -0.01" quat="0.707107 0 0.707107 0" type="cylinder" rgba="0.7 0.7 0.7 1" />
+              <body name="right_shoulder_roll_link" pos="0 -0.038 -0.013831" quat="0.990268 0.139172 0 0">
+                <inertial pos="-0.000227 -0.00727 -0.063243" quat="0.712604 -0.00710317 -0.0196223 0.701256" mass="0.643" diaginertia="0.000691311 0.000618011 0.000388977" />
+                <joint name="right_shoulder_roll_joint" pos="0 0 0" axis="1 0 0" range="-2.2515 1.5882" actuatorfrcrange="-25 25" />
+                <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_shoulder_roll_link" />
+                <geom size="0.03 0.015" pos="-0.004 -0.006 -0.053" type="cylinder" rgba="0.7 0.7 0.7 1" />
+                <body name="right_shoulder_yaw_link" pos="0 -0.00624 -0.1032">
+                  <inertial pos="0.010773 0.002949 -0.072009" quat="0.687134 -0.0679942 -0.0964829 0.716879" mass="0.734" diaginertia="0.00106187 0.00103217 0.000400661" />
+                  <joint name="right_shoulder_yaw_joint" pos="0 0 0" axis="0 0 1" range="-2.618 2.618" actuatorfrcrange="-25 25" />
+                  <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_shoulder_yaw_link" />
+                  <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="right_shoulder_yaw_link" />
+                  <body name="right_elbow_link" pos="0.015783 0 -0.080518">
+                    <inertial pos="0.064956 -0.004454 -0.010062" quat="0.388129 0.388821 0.636132 0.541765" mass="0.6" diaginertia="0.000443035 0.000421612 0.000259353" />
+                    <joint name="right_elbow_joint" pos="0 0 0" axis="0 1 0" range="-1.0472 2.0944" actuatorfrcrange="-25 25" />
+                    <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_elbow_link" />
+                    <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="right_elbow_link" />
+                    <body name="right_wrist_roll_link" pos="0.1 -0.00188791 -0.01">
+                      <inertial pos="0.0171394 -0.000537591 4.8864e-07" quat="0.411667 0.575338 -0.411094 0.574906" mass="0.085445" diaginertia="5.48211e-05 4.96646e-05 3.57798e-05" />
+                      <joint name="right_wrist_roll_joint" pos="0 0 0" axis="1 0 0" range="-1.97222 1.97222" actuatorfrcrange="-25 25" />
+                      <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_wrist_roll_link" />
+                      <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="right_wrist_roll_link" />
+                      <body name="right_wrist_pitch_link" pos="0.038 0 0">
+                        <inertial pos="0.0229999 0.00111685 -0.00111658" quat="0.643608 0.293036 0.661363 0.249998" mass="0.48405" diaginertia="0.000430353 0.000429873 0.000164648" />
+                        <joint name="right_wrist_pitch_joint" pos="0 0 0" axis="0 1 0" range="-1.61443 1.61443" actuatorfrcrange="-5 5" />
+                        <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_wrist_pitch_link" />
+                        <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="right_wrist_pitch_link" />
+                        <body name="right_wrist_yaw_link" pos="0.046 0 0">
+                          <inertial pos="0.0114003 0.0440648 0.00365264" quat="0.667982 0.734498 0.0502293 0.108586" mass="0.194576" diaginertia="0.000433724 0.000389145 0.000109002" />
+                          <joint name="right_wrist_yaw_joint" pos="0 0 0" axis="0 0 1" range="-1.61443 1.61443" actuatorfrcrange="-5 5" />
+                          <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_wrist_yaw_link" />
+                          <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="right_wrist_yaw_link" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part00" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part01" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part02" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part03" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part04" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part05" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part06" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part07" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part08" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part09" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part10" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part11" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part12" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part13" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part14" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part15" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part16" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part17" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part18" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part19" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part20" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part21" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part22" />
+                          <geom pos="0.0415 -0.003 0" quat="0.707107 0 0 -0.707107" type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_base_link_part23" />
+                          <body name="right_gripper_Link1_1" pos="0.1008 -0.04355 0.0152" quat="0.707107 0 0 -0.707107">
+                            <inertial pos="-0.0161706 0.0211979 0.00108767" quat="0.608868 0.293684 -0.610532 0.412651" mass="0.0413768" diaginertia="2.66832e-05 2.31526e-05 1.29496e-05" />
+                            <joint name="right_gripper_Joint1_1" pos="0 0 0" axis="-1 0 0" type="slide" range="-0.02 0.0245" actuatorfrcrange="-60 60" armature="0.02" damping="20" solreflimit="-200000 -2000" />
+                            <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_Link1_1" />
+                            <geom type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_Link1_1" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2" />
+                            <geom pos="-0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part00" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part01" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part02" />
+                            <geom pos="-0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part03" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part04" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part05" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part06" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part07" />
+                            <geom pos="-0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part08" />
+                            <geom pos="-0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part09" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part10" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part11" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part12" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part13" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part14" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part15" />
+                            <geom pos="-0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part16" />
+                            <geom pos="-0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part17" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part18" />
+                            <geom pos="-0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part19" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part20" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part21" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part22" />
+                            <geom pos="-0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link1_2_part23" />
+                            <geom pos="-0.0155165 0.038043 -0.001" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.29804 0.29804 0.29804 1" mesh="dex1_Link1_3" />
+                            <geom pos="-0.0155165 0.038043 -0.001" quat="1 0 0 0" type="mesh" rgba="0.29804 0.29804 0.29804 1" mesh="dex1_Link1_3" friction="3.0 0.15 0.005" condim="6" />
+                          </body>
+                          <body name="right_gripper_Link2_1" pos="0.1008 0.03755 -0.0152" quat="0.707107 0 0 -0.707107">
+                            <inertial pos="0.0151804 0.016693 0.0219487" quat="0.386859 0.792314 -0.242292 0.404814" mass="0.0413768" diaginertia="3.53417e-05 2.63489e-05 1.43198e-05" />
+                            <joint name="right_gripper_Joint2_1" pos="0 0 0" axis="1 0 0" type="slide" range="-0.02 0.0245" actuatorfrcrange="-60 60" armature="0.02" damping="20" solreflimit="-200000 -2000" />
+                            <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_Link2_1" />
+                            <geom type="mesh" rgba="0.79216 0.81961 0.93333 1" mesh="dex1_Link2_1" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2" />
+                            <geom pos="0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part00" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part01" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part02" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part03" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part04" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part05" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part06" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part07" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part08" />
+                            <geom pos="0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part09" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part10" />
+                            <geom pos="0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part11" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part12" />
+                            <geom pos="0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part13" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part14" />
+                            <geom pos="0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part15" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part16" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part17" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part18" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part19" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part20" />
+                            <geom pos="0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part21" />
+                            <geom pos="0.013 0.013 0" quat="1 0 0 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part22" />
+                            <geom pos="0.013 0.013 0" type="mesh" rgba="0.89804 0.91765 0.92941 1" mesh="dex1_Link2_2_part23" />
+                            <geom pos="0.0155165 0.038043 0.0294" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.29804 0.29804 0.29804 1" mesh="dex1_Link2_3" />
+                            <geom pos="0.0155165 0.038043 0.0294" quat="1 0 0 0" type="mesh" rgba="0.29804 0.29804 0.29804 1" mesh="dex1_Link2_3" friction="3.0 0.15 0.005" condim="6" />
+                          </body>
+                          <camera name="right_wrist_cam" pos="0.105 0.0 0.115" xyaxes="0.000000 -1.000000 0.000000 0.669131 0.000000 0.743145" fovy="110.0" />
+                        </body>
+                      </body>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+            <camera name="torso_rgbd" pos="0.068 0.012 0.344" xyaxes="0.000000 -1.000000 0.000000 0.673013 0.000000 0.739631" fovy="65.0" />
+          </body>
+        </body>
+      </body>
+    </body>
+    <geom name="floor" type="plane" size="4 4 0.05" material="grid" />
+    <light pos="1.5 1 2.5" dir="-0.5 -0.3 -1" diffuse="0.8 0.8 0.8" />
+    <light pos="-1.5 -1 2" dir="0.5 0.3 -1" diffuse="0.4 0.4 0.4" />
+    <geom name="table" type="box" rgba="0.55 0.42 0.28 1" size="0.2 0.4 0.37" pos="0.5 -0.1 0.37" />
+    <geom name="carton_fond" type="box" rgba="0.76 0.6 0.42 1" size="0.10600000000000001 0.096 0.006" pos="0.32 -0.36 0.746" />
+    <geom name="carton_mur0" type="box" rgba="0.76 0.6 0.42 1" size="0.006 0.096 0.035" pos="0.42600000000000005 -0.36 0.787" />
+    <geom name="carton_mur1" type="box" rgba="0.76 0.6 0.42 1" size="0.006 0.096 0.035" pos="0.214 -0.36 0.787" />
+    <geom name="carton_mur2" type="box" rgba="0.76 0.6 0.42 1" size="0.10600000000000001 0.006 0.035" pos="0.32 -0.264 0.787" />
+    <geom name="carton_mur3" type="box" rgba="0.76 0.6 0.42 1" size="0.10600000000000001 0.006 0.035" pos="0.32 -0.45599999999999996 0.787" />
+    <body name="piece" pos="0.34 -0.08 0.7587" quat="0.5801 -0.8119 -0.0624 -0.0187">
+      <freejoint name="piece_free" />
+      <geom name="piece_visu" type="mesh" mesh="piece" rgba="0.07 0.07 0.08 1" contype="0" conaffinity="0" density="614.0" />
+      <geom name="piece" type="mesh" mesh="Novares_Piece1_centered_part00" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c1" type="mesh" mesh="Novares_Piece1_centered_part01" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c2" type="mesh" mesh="Novares_Piece1_centered_part02" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c3" type="mesh" mesh="Novares_Piece1_centered_part03" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c4" type="mesh" mesh="Novares_Piece1_centered_part04" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c5" type="mesh" mesh="Novares_Piece1_centered_part05" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c6" type="mesh" mesh="Novares_Piece1_centered_part06" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c7" type="mesh" mesh="Novares_Piece1_centered_part07" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c8" type="mesh" mesh="Novares_Piece1_centered_part08" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c9" type="mesh" mesh="Novares_Piece1_centered_part09" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c10" type="mesh" mesh="Novares_Piece1_centered_part10" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c11" type="mesh" mesh="Novares_Piece1_centered_part11" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c12" type="mesh" mesh="Novares_Piece1_centered_part12" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c13" type="mesh" mesh="Novares_Piece1_centered_part13" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c14" type="mesh" mesh="Novares_Piece1_centered_part14" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c15" type="mesh" mesh="Novares_Piece1_centered_part15" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c16" type="mesh" mesh="Novares_Piece1_centered_part16" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c17" type="mesh" mesh="Novares_Piece1_centered_part17" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c18" type="mesh" mesh="Novares_Piece1_centered_part18" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c19" type="mesh" mesh="Novares_Piece1_centered_part19" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c20" type="mesh" mesh="Novares_Piece1_centered_part20" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c21" type="mesh" mesh="Novares_Piece1_centered_part21" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c22" type="mesh" mesh="Novares_Piece1_centered_part22" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c23" type="mesh" mesh="Novares_Piece1_centered_part23" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c24" type="mesh" mesh="Novares_Piece1_centered_part24" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c25" type="mesh" mesh="Novares_Piece1_centered_part25" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c26" type="mesh" mesh="Novares_Piece1_centered_part26" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c27" type="mesh" mesh="Novares_Piece1_centered_part27" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c28" type="mesh" mesh="Novares_Piece1_centered_part28" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c29" type="mesh" mesh="Novares_Piece1_centered_part29" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c30" type="mesh" mesh="Novares_Piece1_centered_part30" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c31" type="mesh" mesh="Novares_Piece1_centered_part31" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c32" type="mesh" mesh="Novares_Piece1_centered_part32" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c33" type="mesh" mesh="Novares_Piece1_centered_part33" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c34" type="mesh" mesh="Novares_Piece1_centered_part34" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c35" type="mesh" mesh="Novares_Piece1_centered_part35" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c36" type="mesh" mesh="Novares_Piece1_centered_part36" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c37" type="mesh" mesh="Novares_Piece1_centered_part37" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c38" type="mesh" mesh="Novares_Piece1_centered_part38" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c39" type="mesh" mesh="Novares_Piece1_centered_part39" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c40" type="mesh" mesh="Novares_Piece1_centered_part40" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c41" type="mesh" mesh="Novares_Piece1_centered_part41" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c42" type="mesh" mesh="Novares_Piece1_centered_part42" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c43" type="mesh" mesh="Novares_Piece1_centered_part43" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c44" type="mesh" mesh="Novares_Piece1_centered_part44" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c45" type="mesh" mesh="Novares_Piece1_centered_part45" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c46" type="mesh" mesh="Novares_Piece1_centered_part46" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c47" type="mesh" mesh="Novares_Piece1_centered_part47" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c48" type="mesh" mesh="Novares_Piece1_centered_part48" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c49" type="mesh" mesh="Novares_Piece1_centered_part49" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c50" type="mesh" mesh="Novares_Piece1_centered_part50" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c51" type="mesh" mesh="Novares_Piece1_centered_part51" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c52" type="mesh" mesh="Novares_Piece1_centered_part52" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c53" type="mesh" mesh="Novares_Piece1_centered_part53" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c54" type="mesh" mesh="Novares_Piece1_centered_part54" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c55" type="mesh" mesh="Novares_Piece1_centered_part55" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c56" type="mesh" mesh="Novares_Piece1_centered_part56" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c57" type="mesh" mesh="Novares_Piece1_centered_part57" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c58" type="mesh" mesh="Novares_Piece1_centered_part58" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c59" type="mesh" mesh="Novares_Piece1_centered_part59" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c60" type="mesh" mesh="Novares_Piece1_centered_part60" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c61" type="mesh" mesh="Novares_Piece1_centered_part61" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c62" type="mesh" mesh="Novares_Piece1_centered_part62" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c63" type="mesh" mesh="Novares_Piece1_centered_part63" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c64" type="mesh" mesh="Novares_Piece1_centered_part64" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c65" type="mesh" mesh="Novares_Piece1_centered_part65" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c66" type="mesh" mesh="Novares_Piece1_centered_part66" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c67" type="mesh" mesh="Novares_Piece1_centered_part67" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c68" type="mesh" mesh="Novares_Piece1_centered_part68" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c69" type="mesh" mesh="Novares_Piece1_centered_part69" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c70" type="mesh" mesh="Novares_Piece1_centered_part70" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c71" type="mesh" mesh="Novares_Piece1_centered_part71" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c72" type="mesh" mesh="Novares_Piece1_centered_part72" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c73" type="mesh" mesh="Novares_Piece1_centered_part73" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c74" type="mesh" mesh="Novares_Piece1_centered_part74" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c75" type="mesh" mesh="Novares_Piece1_centered_part75" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c76" type="mesh" mesh="Novares_Piece1_centered_part76" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c77" type="mesh" mesh="Novares_Piece1_centered_part77" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c78" type="mesh" mesh="Novares_Piece1_centered_part78" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c79" type="mesh" mesh="Novares_Piece1_centered_part79" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c80" type="mesh" mesh="Novares_Piece1_centered_part80" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c81" type="mesh" mesh="Novares_Piece1_centered_part81" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c82" type="mesh" mesh="Novares_Piece1_centered_part82" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c83" type="mesh" mesh="Novares_Piece1_centered_part83" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c84" type="mesh" mesh="Novares_Piece1_centered_part84" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c85" type="mesh" mesh="Novares_Piece1_centered_part85" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c86" type="mesh" mesh="Novares_Piece1_centered_part86" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c87" type="mesh" mesh="Novares_Piece1_centered_part87" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c88" type="mesh" mesh="Novares_Piece1_centered_part88" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+      <geom name="piece_c89" type="mesh" mesh="Novares_Piece1_centered_part89" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
+    </body>
+  </worldbody>
+  <option integrator="implicitfast" cone="elliptic" impratio="10" />
+  <visual>
+    <global offwidth="1280" offheight="960" />
+  </visual>
+  <default>
+    <joint damping="0.5" />
+  </default>
+  <actuator>
+    <position name="LZ_mt_Joint" joint="LZ_mt_Joint" kp="50000.0" kv="2000.0" ctrlrange="0 0.21" />
+    <position name="LZ_it_Joint" joint="LZ_it_Joint" kp="50000.0" kv="2000.0" ctrlrange="0 0.21" />
+    <position name="Yaw_Joint" joint="Yaw_Joint" kp="400.0" kv="40.0" ctrlrange="-0.04363 2.3562" />
+    <position name="torso_Joint" joint="torso_Joint" kp="400.0" kv="40.0" ctrlrange="-2.7053 2.7053" />
+    <position name="left_shoulder_pitch_joint" joint="left_shoulder_pitch_joint" kp="300.0" kv="30.0" ctrlrange="-3.0892 2.6704" />
+    <position name="left_shoulder_roll_joint" joint="left_shoulder_roll_joint" kp="300.0" kv="30.0" ctrlrange="-1.5882 2.2515" />
+    <position name="left_shoulder_yaw_joint" joint="left_shoulder_yaw_joint" kp="300.0" kv="30.0" ctrlrange="-2.618 2.618" />
+    <position name="left_elbow_joint" joint="left_elbow_joint" kp="300.0" kv="30.0" ctrlrange="-1.0472 2.0944" />
+    <position name="left_wrist_roll_joint" joint="left_wrist_roll_joint" kp="300.0" kv="30.0" ctrlrange="-1.97222 1.97222" />
+    <position name="left_wrist_pitch_joint" joint="left_wrist_pitch_joint" kp="300.0" kv="30.0" ctrlrange="-1.61443 1.61443" />
+    <position name="left_wrist_yaw_joint" joint="left_wrist_yaw_joint" kp="300.0" kv="30.0" ctrlrange="-1.61443 1.61443" />
+    <position name="left_gripper_Joint1_1" joint="left_gripper_Joint1_1" kp="7000.0" kv="500.0" ctrlrange="-0.02 0.032" forcerange="-120 120" />
+    <position name="right_shoulder_pitch_joint" joint="right_shoulder_pitch_joint" kp="300.0" kv="30.0" ctrlrange="-3.0892 2.6704" />
+    <position name="right_shoulder_roll_joint" joint="right_shoulder_roll_joint" kp="300.0" kv="30.0" ctrlrange="-2.2515 1.5882" />
+    <position name="right_shoulder_yaw_joint" joint="right_shoulder_yaw_joint" kp="300.0" kv="30.0" ctrlrange="-2.618 2.618" />
+    <position name="right_elbow_joint" joint="right_elbow_joint" kp="300.0" kv="30.0" ctrlrange="-1.0472 2.0944" />
+    <position name="right_wrist_roll_joint" joint="right_wrist_roll_joint" kp="300.0" kv="30.0" ctrlrange="-1.97222 1.97222" />
+    <position name="right_wrist_pitch_joint" joint="right_wrist_pitch_joint" kp="300.0" kv="30.0" ctrlrange="-1.61443 1.61443" />
+    <position name="right_wrist_yaw_joint" joint="right_wrist_yaw_joint" kp="300.0" kv="30.0" ctrlrange="-1.61443 1.61443" />
+    <position name="right_gripper_Joint1_1" joint="right_gripper_Joint1_1" kp="7000.0" kv="500.0" ctrlrange="-0.02 0.032" forcerange="-120 120" />
+  </actuator>
+  <contact>
+    <exclude body1="world" body2="Left_Wheel_Link" />
+    <exclude body1="world" body2="RIght_Wheel_Link" />
+    <exclude body1="left_wrist_yaw_link" body2="left_wrist_roll_link" />
+    <exclude body1="left_gripper_Link1_1" body2="left_gripper_Link2_1" />
+    <exclude body1="right_wrist_yaw_link" body2="right_wrist_roll_link" />
+    <exclude body1="right_gripper_Link1_1" body2="right_gripper_Link2_1" />
+  </contact>
+  <equality>
+    <joint joint1="left_gripper_Joint2_1" joint2="left_gripper_Joint1_1" polycoef="0 1 0 0 0" />
+    <joint joint1="right_gripper_Joint2_1" joint2="right_gripper_Joint1_1" polycoef="0 1 0 0 0" />
+  </equality>
+</mujoco>
