@@ -1,4 +1,4 @@
-"""Enregistre des démos expertes de la tâche cube au format xr_teleoperate (JSON + JPEG).
+"""Enregistre des démos expertes d'une tâche de sim (``--task cube|novares``) au format xr_teleoperate.
 
 Même format et même ordre qu'un enregistrement réel du G1-D, pour passer ensuite par le MÊME
 convertisseur (``g1d_wla.convert_teleop``) que les vraies démos :
@@ -28,8 +28,8 @@ from PIL import Image
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from cube_task import INSTRUCTION, ExpertParams, run_expert, sample_cube  # noqa: E402
-from g1d_sim import SCENE_CUBE_XML, SIDES, G1DSim  # noqa: E402
+from g1d_sim import SIDES, G1DSim  # noqa: E402
+from sim_tasks import get_task  # noqa: E402
 from wla_client import closure_to_dex1  # noqa: E402
 
 TORSO_PITCH_INDEX = 13
@@ -37,7 +37,7 @@ ARM_BODY_SLICE = {"left": slice(15, 22), "right": slice(22, 29)}
 VIEWS = ("head_left", "cam_wrist_left", "cam_wrist_right")
 
 
-def record_episode(sim: G1DSim, rng: np.random.Generator, ep_dir: Path, jpeg_quality: int) -> dict:
+def record_episode(sim: G1DSim, rng: np.random.Generator, ep_dir: Path, jpeg_quality: int, task) -> dict:
     colors_dir = ep_dir / "colors"
     colors_dir.mkdir(parents=True)
     steps = []
@@ -64,10 +64,10 @@ def record_episode(sim: G1DSim, rng: np.random.Generator, ep_dir: Path, jpeg_qua
         steps.append({"idx": t, "colors": colors, "depths": {}, "states": states, "actions": actions,
                       "tactiles": {}, "audios": {}, "sim_state": ""})
 
-    res = run_expert(sim, rng, ExpertParams(), on_step=on_step)
+    res = task.expert(sim, rng, on_step=on_step)
     doc = {"info": {"version": "1.0.0", "author": "g1d_sim", "image": {"width": 640, "height": 480, "fps": 30.0},
                     "source": "sim/record_sim_demos.py"},
-           "text": {"goal": INSTRUCTION, "desc": "expert scripté, sim MuJoCo G1-D", "steps": ""},
+           "text": {"goal": task.instruction, "desc": f"expert scripté, sim MuJoCo G1-D, tâche {task.name}", "steps": ""},
            "data": steps}
     (ep_dir / "data.json").write_text(json.dumps(doc))
     return res
@@ -77,6 +77,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--n", type=int, default=150, help="nombre d'épisodes RÉUSSIS à garder")
     ap.add_argument("--out", required=True, type=Path)
+    ap.add_argument("--task", choices=["cube", "novares"], default="cube")
     ap.add_argument("--seed", type=int, default=1000)
     ap.add_argument("--head-view", dest="head_view", choices=["raw", "rec"], default="raw")
     ap.add_argument("--jpeg-quality", type=int, default=95)
@@ -88,20 +89,21 @@ def main() -> None:
         shutil.rmtree(a.out)
     a.out.mkdir(parents=True)
     rng = np.random.default_rng(a.seed)
-    sim = G1DSim(scene_xml=SCENE_CUBE_XML, head_view=a.head_view)
+    task = get_task(a.task)
+    sim = G1DSim(scene_xml=task.scene_xml, head_view=a.head_view)
     kept, tried, t0 = 0, 0, time.time()
     summary = []
     while kept < a.n:
         sim.reset()
         sim.go_ready()
-        sample_cube(sim, rng)
+        task.place(sim, rng)
         ep_dir = a.out / f"episode_{kept:04d}"
-        res = record_episode(sim, rng, ep_dir, a.jpeg_quality)
+        res = record_episode(sim, rng, ep_dir, a.jpeg_quality, task)
         tried += 1
         if res["success"] and res["ik_refused"] == 0:
             kept += 1
             summary.append(res)
-            print(f"garde {kept}/{a.n} (essai {tried}) cube {res['cube_base']} soulevé {res['lifted']*100:.1f} cm "
+            print(f"garde {kept}/{a.n} (essai {tried}) soulevé {res['lifted']*100:.1f} cm "
                   f"| {time.time() - t0:.0f} s", flush=True)
         else:
             shutil.rmtree(ep_dir)

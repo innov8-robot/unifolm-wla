@@ -136,8 +136,12 @@ async def run(args) -> dict:
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    cube = args.scene == "cube"
-    sim = G1DSim(scene_xml=SCENE_CUBE_XML if cube else SCENE_XML, head_view=args.head_view)
+    task = None
+    if args.scene in ("cube", "novares"):
+        from sim_tasks import get_task
+        task = get_task(args.scene)
+    cube = task is not None                    # tâche avec objet à soulever et réussite mesurée
+    sim = G1DSim(scene_xml=task.scene_xml if task else SCENE_XML, head_view=args.head_view)
     rng = np.random.default_rng(args.seed)
     log = {"args": vars(args), "episodes": []}
     packer = msgpack_numpy.Packer()
@@ -151,17 +155,16 @@ async def run(args) -> dict:
             await ws.recv()
             ep = {"episode": e}
             if cube:
-                from cube_task import LIFT_SUCCESS, cube_in_base, sample_cube
-                sample_cube(sim, rng)
-                z0 = sim.object_pose("cube")[2, 3]
-                ep["cube_base"] = np.round(cube_in_base(sim), 4).tolist()
+                task.place(sim, rng)
+                z0 = sim.object_pose(task.body)[2, 3]
+                ep["cube_base"] = np.round((np.linalg.inv(sim.base_pose_wla()) @ sim.object_pose(task.body))[:3, 3], 4).tolist()
             frames = [] if e < args.videos else None
-            done = (lambda: sim.object_pose("cube")[2, 3] - z0 > LIFT_SUCCESS) if cube else None
+            done = (lambda: sim.object_pose(task.body)[2, 3] - z0 > task.lift_success) if cube else None
             ep["chunks"], ep["steps_to_success"] = await run_chunks(ws, packer, sim, args, frames, args.max_steps, done)
             if cube:
-                ep["lifted"] = round(float(sim.object_pose("cube")[2, 3] - z0), 4)
-                # réussite = cube soulevé de plus de LIFT_SUCCESS à un moment ET encore tenu à la fin
-                ep["success"] = bool(ep["steps_to_success"] is not None and ep["lifted"] > LIFT_SUCCESS)
+                ep["lifted"] = round(float(sim.object_pose(task.body)[2, 3] - z0), 4)
+                # réussite = objet soulevé au-delà du seuil à un moment ET encore tenu à la fin
+                ep["success"] = bool(ep["steps_to_success"] is not None and ep["lifted"] > task.lift_success)
             if frames:
                 save_video(frames, out / f"episode_{e:03d}.mp4", 30 / args.video_every)
             log["episodes"].append(ep)
@@ -188,8 +191,9 @@ def main() -> None:
     ap.add_argument("--instruction", default="pick up the black part and put it in the box")
     ap.add_argument("--unnorm_key", default="UnifoLM_G1_Dex1")
     ap.add_argument("--head-view", dest="head_view", choices=["rec", "raw"], default="rec")
-    ap.add_argument("--scene", choices=["piece", "cube"], default="piece",
-                    help="piece : scène d'origine (pièce Novares, non versionnée) ; cube : tâche de validation")
+    ap.add_argument("--scene", choices=["piece", "cube", "novares"], default="piece",
+                    help="piece : scène d'origine sans mesure ; cube / novares : tâches avec placement "
+                         "aléatoire et taux de réussite (novares : pièce non versionnée)")
     ap.add_argument("--episodes", type=int, default=1)
     ap.add_argument("--max-steps", dest="max_steps", type=int, default=200, help="pas de 30 Hz par épisode")
     ap.add_argument("--seed", type=int, default=7, help="tirage des cubes (les démos utilisent 1000)")
