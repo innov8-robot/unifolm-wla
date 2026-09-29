@@ -232,13 +232,18 @@ class EpisodeWriter():
         with open(self.json_path, "a", encoding="utf-8") as f:
             f.write("\n]\n}")      # Close the JSON array and object
         pending = getattr(self, "pending_info", None)
-        if pending:                # en-tête complété après coup (issue de l'essai)
-            with open(self.json_path, "r", encoding="utf-8") as f:
-                doc = json.load(f)
-            doc["info"].update(pending)
-            with open(self.json_path, "w", encoding="utf-8") as f:
-                json.dump(doc, f, ensure_ascii=False, indent=4)
-            self.pending_info = None
+        self.pending_info = None
+        if pending:                # en-tête complété après coup (issue de l'essai), écriture ATOMIQUE
+            try:
+                with open(self.json_path, "r", encoding="utf-8") as f:
+                    doc = json.load(f)
+                doc["info"].update(pending)
+                tmp = self.json_path + ".tmp"
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(doc, f, ensure_ascii=False, indent=4)
+                os.replace(tmp, self.json_path)
+            except Exception as e:  # ne jamais tuer le thread d'écriture : l'épisode reste valide sans l'issue
+                logger_mp.error(f"==> En-tête non complété pour {self.json_path} : {e}")
 
         self.need_save = False     # Reset the save flag
         self.is_available = True   # Mark the class as available after saving

@@ -206,6 +206,21 @@ if __name__ == '__main__':
             logger_mp.info(f"Enter debug mode: {'Success' if status == 0 else 'Failed'}")
 
         # arm
+        # mode politique (G1-D, RECAP) : connexion au serveur WLA AVANT l'init des bras, pour qu'un
+        # serveur injoignable arrête le programme sans jamais bouger les bras (audit du 29/09)
+        bridge = None
+        if args.policy_uri:
+            if not camera_config['head_camera']['enable_zmq']:
+                raise SystemExit("mode politique : la caméra de tête doit être servie en ZMQ (enable_zmq: true)")
+            from policy_bridge import PolicyBridge, PolicyError
+            bridge = PolicyBridge(args.policy_uri, args.policy_instruction or args.task_goal,
+                                  advantage=args.policy_advantage, exec_steps=args.policy_exec_steps,
+                                  frequency=args.frequency, max_speed=args.policy_max_speed,
+                                  torso_pitch_index=args.torso_pitch_index, torso_pitch=args.torso_pitch,
+                                  control_left=not args.right_only)
+            logger_mp.info(f"🤖  Mode POLITIQUE : {args.policy_uri} | grip = corriger, gâchette = pince, "
+                           f"X gauche = réussi, Y gauche = raté | vitesse max {args.policy_max_speed} m/s")
+
         if args.arm == "G1_29":
             arm_ik = G1_29_ArmIK()
             arm_ctrl = G1_29_ArmController(motion_mode=args.motion, simulation_mode=args.sim)
@@ -292,18 +307,10 @@ if __name__ == '__main__':
             from teleop.utils.sim_state_topic import start_sim_state_subscribe
             sim_state_subscriber = start_sim_state_subscribe()
 
-        # mode politique (G1-D, RECAP) : pont vers le serveur WLA
-        bridge = None
-        if args.policy_uri:
-            from policy_bridge import PolicyBridge
-            bridge = PolicyBridge(args.policy_uri, args.policy_instruction or args.task_goal,
-                                  advantage=args.policy_advantage, exec_steps=args.policy_exec_steps,
-                                  frequency=args.frequency, max_speed=args.policy_max_speed,
-                                  torso_pitch_index=args.torso_pitch_index, torso_pitch=args.torso_pitch,
-                                  control_left=not args.right_only)
-            logger_mp.info(f"🤖  Mode POLITIQUE : {args.policy_uri} | grip = corriger, gâchette = pince, "
-                           f"X gauche = réussi, Y gauche = raté | vitesse max {args.policy_max_speed} m/s")
         policy_intervention = False
+        policy_failed = False          # erreur du serveur : la politique est suspendue jusqu'au prochain essai
+        policy_paused = False          # pas où la politique ne pilote pas : pas enregistrés
+        hold_ik = None                 # cibles figées quand la politique ne pilote pas
         episode_steps = 0
         head_img = left_wrist_img = right_wrist_img = None      # caméra désactivée : reste None
         prev_lX = prev_lY = False
@@ -371,7 +378,12 @@ if __name__ == '__main__':
                         RECORD_RUNNING = True
                         episode_steps = 0
                         if bridge is not None:
-                            bridge.reset()
+                            policy_failed = False
+                            try:
+                                bridge.reset()
+                            except Exception as e:
+                                policy_failed = True
+                                logger_mp.error(f"🤖  serveur WLA injoignable, politique suspendue : {e}")
                     else:
                         logger_mp.error("Failed to create episode. Recording not started.")
                 else:
@@ -397,12 +409,15 @@ if __name__ == '__main__':
                 rB = bool(tele_data.right_ctrl_bButton)
                 if rA and not prev_rA and not args.motion:
                     RECORD_TOGGLE = True
+                    if bridge is not None and RECORD_RUNNING:     # fin sans X/Y : issue inconnue (ignorée par RECAP)
+                        recorder.set_episode_info({"outcome": "unknown"})
                 if rB and not prev_rB:
                     RECORD_CANCEL = True
                 prev_rA, prev_rB = rA, rB
             if bridge is not None and args.record and START:
                 lX, lY = bool(tele_data.left_ctrl_aButton), bool(tele_data.left_ctrl_bButton)
-                if RECORD_RUNNING and ((lX and not prev_lX) or (lY and not prev_lY)):
+                if RECORD_RUNNING and not RECORD_CANCEL and not tele_data.right_ctrl_bButton \
+                        and ((lX and not prev_lX) or (lY and not prev_lY)):
                     ok_ep = lX and not prev_lX
                     recorder.set_episode_info({"success_step": episode_steps if ok_ep else None,
                                                "outcome": "success" if ok_ep else "failure"})
@@ -414,6 +429,8 @@ if __name__ == '__main__':
                     left_hand_pos_array[:] = tele_data.left_hand_pos.flatten()
                 with right_hand_pos_array.get_lock():
                     right_hand_pos_array[:] = tele_data.right_hand_pos.flatten()
+            elif args.ee == "dex1" and args.input_mode == "controller" and bridge is not None:
+                pass                       # mode politique : la pince est commandée plus bas (politique ou tenue)
             elif args.ee == "dex1" and args.input_mode == "controller":
                 if not args.right_only:
                     with left_gripper_value.get_lock():
@@ -455,20 +472,33 @@ if __name__ == '__main__':
             time_ik_start = time.time()
             left_target, right_target = tele_data.left_wrist_pose, tele_data.right_wrist_pose
             if bridge is not None:
-                policy_active = RECORD_RUNNING if args.record else START
+                policy_active = (RECORD_RUNNING if args.record else START) and not policy_failed
                 body_q = arm_ctrl.get_current_motor_q()
                 imgs_ok = (head_img is not None and head_img.bgr is not None and right_wrist_img is not None
                            and right_wrist_img.bgr is not None
                            and (args.right_only or (left_wrist_img is not None and left_wrist_img.bgr is not None)))
+                res = None
                 if policy_active and imgs_ok:
                     head = head_img.bgr
                     if camera_config['head_camera']['binocular']:
                         head = head[:, :head.shape[1] // 2]            # œil GAUCHE (brut), comme les datasets
-                    lw = right_wrist_img.bgr if args.right_only else left_wrist_img.bgr
+                    # --right-only : pas de caméra de poignet gauche -> image noire (jamais celle de droite)
+                    lw = np.zeros_like(right_wrist_img.bgr) if args.right_only else left_wrist_img.bgr
                     with dual_gripper_data_lock:
                         grip_meas = np.array([dual_gripper_state_array[0], dual_gripper_state_array[1]])
-                    res = bridge.step({"head": head, "left_wrist": lw, "right_wrist": right_wrist_img.bgr},
-                                      np.asarray(current_lr_arm_q), grip_meas, body_q, tele_data)
+                    try:
+                        res = bridge.step({"head": head, "left_wrist": lw, "right_wrist": right_wrist_img.bgr},
+                                          np.asarray(current_lr_arm_q), grip_meas, body_q, tele_data)
+                    except Exception as e:                    # serveur muet, erreur, actions invalides
+                        policy_failed = True
+                        bridge.pause()
+                        logger_mp.error(f"🤖  POLITIQUE SUSPENDUE (bras tenus) : {e} — X/Y pour finir l'essai, "
+                                        f"B pour l'annuler")
+                elif policy_active and not imgs_ok:
+                    bridge.pause()                            # image absente : on tient, la reprise repart de la mesure
+                if res is not None:
+                    hold_ik = None
+                    policy_paused = False
                     left_target, right_target = res["left"], res["right"]
                     policy_intervention = res["intervention"]
                     if not args.right_only:
@@ -476,11 +506,22 @@ if __name__ == '__main__':
                             left_gripper_value.value = res["trigger"]["left"]
                     with right_gripper_value.get_lock():
                         right_gripper_value.value = res["trigger"]["right"]
-                else:                                                  # politique inactive : tenir la pose mesurée
-                    pitch = bridge._pitch(body_q)
-                    left_target = bridge.conv.wla_to_ik("left", bridge.conv.ee_wla("left", np.asarray(current_lr_arm_q[:7]), pitch), pitch)
-                    right_target = bridge.conv.wla_to_ik("right", bridge.conv.ee_wla("right", np.asarray(current_lr_arm_q[7:]), pitch), pitch)
+                else:
+                    # politique inactive : cibles et pince FIGÉES à l'entrée en tenue (recalculer chaque tour
+                    # depuis la mesure fait dériver les bras vers q = 0, audit du 29/09)
+                    if hold_ik is None:
+                        hold_ik = bridge.measured_ik(np.asarray(current_lr_arm_q), body_q)
+                        with dual_gripper_data_lock:
+                            g_hold = [dual_gripper_state_array[0], dual_gripper_state_array[1]]
+                        from policy_bridge import dex1_to_trigger
+                        if not args.right_only:
+                            with left_gripper_value.get_lock():
+                                left_gripper_value.value = dex1_to_trigger(g_hold[0])
+                        with right_gripper_value.get_lock():
+                            right_gripper_value.value = dex1_to_trigger(g_hold[1])
+                    left_target, right_target = hold_ik["left"], hold_ik["right"]
                     policy_intervention = False
+                    policy_paused = True
             sol_q, sol_tauff  = arm_ik.solve_ik(left_target, right_target, current_lr_arm_q, current_lr_arm_dq)
             time_ik_end = time.time()
             logger_mp.debug(f"ik:\t{round(time_ik_end - time_ik_start, 6)}")
@@ -629,10 +670,13 @@ if __name__ == '__main__':
                     if args.sim:
                         sim_state = sim_state_subscriber.read_data()            
                         recorder.add_item(colors=colors, depths=depths, states=states, actions=actions, sim_state=sim_state)
-                    else:
+                    elif bridge is None:
+                        recorder.add_item(colors=colors, depths=depths, states=states, actions=actions)
+                        episode_steps += 1
+                    elif not policy_paused:        # mode politique : pas de pas « tenus » dans les données
                         recorder.add_item(colors=colors, depths=depths, states=states, actions=actions,
-                                          extra={"intervention": int(policy_intervention)} if bridge is not None else None)
-                    episode_steps += 1
+                                          extra={"intervention": int(policy_intervention)})
+                        episode_steps += 1
 
             current_time = time.time()
             time_elapsed = current_time - start_time

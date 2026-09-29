@@ -55,6 +55,7 @@ from websockets.sync.server import serve  # noqa: E402
 import policy_bridge as PB  # noqa: E402
 
 N_QUERIES = [0]
+MODE = {"m": "hold", "offset": 0.0}      # hold | ahead (vise 20 cm devant) | error | nan | mute
 
 
 def handler(ws):
@@ -66,11 +67,22 @@ def handler(ws):
             ws.send(p.pack({}))
             continue
         N_QUERIES[0] += 1
+        if MODE["m"] == "error":
+            ws.send("Traceback: erreur simulée")
+            continue
+        if MODE["m"] == "mute":
+            import time as _t
+            _t.sleep(PB.RECV_TIMEOUT + 1.0)
+            continue
         out = {}
         for s in ("left", "right"):          # « politique » immobile : garde la pose mesurée, pince ouverte
             e = np.asarray(m["obs"][f"observation.state.{s}_ee_6d"], float)
             R = np.stack([e[3:6], e[6:9], np.cross(e[3:6], e[6:9])], 1)
             x = np.r_[e[:3], Rotation.from_matrix(R).as_euler("xyz")]
+            if MODE["m"] == "ahead":
+                x[0] += 0.20
+            if MODE["m"] == "nan":
+                x[0] = np.nan
             out[f"action.{s}_ee_rpy"] = np.tile(x, (1, 30, 1)).astype(np.float32)
             out[f"action.{s}_gripper"] = np.full((1, 30, 1), 5.4, np.float32)
         ws.send(p.pack(out))
@@ -107,6 +119,95 @@ o = br.step(imgs, q, grip, None, td)
 print(f"4d. relâchement : intervention={o['intervention']}, nouvelle requête au modèle : {N_QUERIES[0] > nq}")
 ok2 = (not o["intervention"]) and N_QUERIES[0] > nq and abs(moves[0] - 0.005) < 1e-6 and abs(moves[-1] - 0.05) < 1e-3
 print("RÉSULTAT 4 :", "OK" if ok2 else "ÉCHEC")
+
+# ---------------------------------------------------------------- 5. protections (audit du 29/09)
+res5 = {}
+
+
+def fresh(**kw):
+    td_ = SimpleNamespace(left_ctrl_squeezeValue=0.0, right_ctrl_squeezeValue=0.0, left_ctrl_triggerValue=10.0,
+                          right_ctrl_triggerValue=10.0, left_wrist_pose=np.eye(4), right_wrist_pose=np.eye(4),
+                          head_pose=np.eye(4))
+    for k_, v_ in kw.items():
+        setattr(td_, k_, v_)
+    return td_
+
+
+# 5a. correction tenue sur plusieurs chunks, manette immobile à +5 cm, suivi parfait : pas de dérive
+MODE["m"] = "hold"
+br.reset()
+td = fresh()
+qm = q.copy()
+meas0 = br.measured_ik(qm, None)["right"]
+br.step(imgs, qm, grip, None, td)
+td.right_ctrl_squeezeValue = 1.0
+br.step(imgs, qm, grip, None, td)
+td.right_wrist_pose = np.eye(4)
+td.right_wrist_pose[0, 3] += 0.05
+ik5 = G1_29_ArmIK(Unit_Test=False, Visualization=False)
+for _ in range(150):                                   # suivi parfait : les angles suivent la cible IK
+    o = br.step(imgs, qm, grip, None, td)
+    sol, _ = ik5.solve_ik(o["left"], o["right"], qm, np.zeros(14))
+    qm = sol
+drift = br.measured_ik(qm, None)["right"][0, 3] - meas0[0, 3]
+res5["a"] = abs(drift - 0.05) < 0.01
+print(f"5a. correction +5 cm tenue 150 pas (5 chunks) : bras avancé de {drift*1000:.0f} mm (attendu ~50, sans dérive)")
+
+# 5b. premier pas d'un essai : borne de vitesse depuis la pose MESURÉE
+MODE["m"] = "ahead"
+br.reset()
+m0 = br.measured_ik(q, None)["right"]
+o = br.step(imgs, q, grip, None, fresh())
+jump = float(np.linalg.norm(o["right"][:3, 3] - m0[:3, 3]))
+res5["b"] = jump <= br.max_step + 1e-9
+print(f"5b. politique qui vise 20 cm plus loin : saut au 1er pas {jump*1000:.2f} mm (borne {br.max_step*1000:.2f})")
+
+# 5c. serveur : erreur texte, actions NaN, serveur muet -> PolicyError
+for mode in ("error", "nan", "mute"):
+    MODE["m"] = mode
+    br.pause()
+    try:
+        br.step(imgs, q, grip, None, fresh())
+        res5["c_" + mode] = False
+    except PB.PolicyError as e:
+        res5["c_" + mode] = True
+        print(f"5c. serveur « {mode} » -> PolicyError : {str(e).splitlines()[0][:70]}")
+MODE["m"] = "hold"
+br.reset()                                             # reconnexion après le serveur muet
+print("    reconnexion après le serveur muet : OK")
+
+# 5d. l'opérateur se penche (tête +10 cm) pendant la correction : le bras ne bouge pas
+br.reset()
+td = fresh()
+br.step(imgs, q, grip, None, td)
+td.right_ctrl_squeezeValue = 1.0
+o1 = br.step(imgs, q, grip, None, td)
+td.right_wrist_pose = np.eye(4)
+td.right_wrist_pose[0, 3] -= 0.10                      # la téléop rend le poignet relatif à la tête
+td.head_pose = np.eye(4)
+td.head_pose[0, 3] += 0.10
+for _ in range(10):
+    o2 = br.step(imgs, q, grip, None, td)
+res5["d"] = np.linalg.norm(o2["right"][:3, 3] - o1["right"][:3, 3]) < 1e-6
+print(f"5d. tête +10 cm, manette immobile dans le monde : bras déplacé de "
+      f"{np.linalg.norm(o2['right'][:3, 3] - o1['right'][:3, 3])*1000:.2f} mm")
+
+# 5e. perte de suivi (saut de 40 cm de la manette) : décalage figé
+td.right_wrist_pose = np.eye(4)
+td.right_wrist_pose[0, 3] += 0.40 - 0.10
+for _ in range(10):
+    o3 = br.step(imgs, q, grip, None, td)
+res5["e"] = np.linalg.norm(o3["right"][:3, 3] - o2["right"][:3, 3]) < 1e-6
+print(f"5e. saut de manette de 40 cm : bras déplacé de {np.linalg.norm(o3['right'][:3, 3] - o2['right'][:3, 3])*1000:.2f} mm")
+
+# 5f. gâchette effleurée (8/10) pendant la correction : la pince reste à la politique (ouverte, 7)
+td = fresh(right_ctrl_squeezeValue=1.0, right_ctrl_triggerValue=8.0)
+br.reset()
+o4 = br.step(imgs, q, grip, None, td)
+res5["f"] = abs(o4["trigger"]["right"] - 7.0) < 1e-9
+print(f"5f. gâchette à 8/10 pendant la correction : gâchette envoyée {o4['trigger']['right']:.1f} (7 = politique, ouverte)")
+ok3 = all(res5.values())
+print("RÉSULTAT 5 :", "OK" if ok3 else f"ÉCHEC {[k for k, v in res5.items() if not v]}")
 br.close()
 srv.shutdown()
-sys.exit(0 if (ok and ok2) else 1)
+sys.exit(0 if (ok and ok2 and ok3) else 1)

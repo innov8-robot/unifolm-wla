@@ -17,8 +17,16 @@ Conventions de repères (vérifiées par ``test_policy_bridge.py``) :
   de son modèle G1 à taille verrouillée à 0, soit la base WLA à buste DROIT ;
 * observation : FK des angles MESURÉS avec l'URDF du G1-D (``g1d_wla``), exprimée dans la base WLA.
 
+Protections (audit du 29/09) : borne de vitesse partant de la pose MESURÉE (premier pas, reprise) ;
+décalage de correction remis à zéro à chaque nouveau chunk (le chunk part de la pose déjà corrigée) ;
+décalage borné et pose manette suivie dans le repère MONDE (indépendante des mouvements de tête) ;
+saut de manette (perte de suivi) -> décalage figé ; délai max sur les requêtes ; actions non finies
+refusées (``PolicyError``) ; hystérésis sur le grip ; la gâchette ne prend la pince qu'au-delà de 30 %.
+
 ⚠ Non validé sur le robot. Premiers essais : vitesses bridées (``max_speed``), zone dégagée, arrêt
-d'urgence à portée. L'indice du tangage du buste dans ``body.qpos`` (13) est une HYPOTHÈSE à vérifier.
+d'urgence à portée. L'indice du tangage du buste dans ``body.qpos`` est une HYPOTHÈSE à vérifier : dans
+l'énumération G1_29 de la téléop, 12 = lacet, 13 = roulis, 14 = tangage de la taille ; la chaîne de
+données (sim, convertisseur) utilise 13 par cohérence.
 """
 from __future__ import annotations
 
@@ -41,6 +49,18 @@ IK_EE_OFFSET = np.array([0.05, 0.0, 0.0])
 DEX1_OPEN = 5.4
 #: la téléop convertit la gâchette (10 relâchée -> 0 pressée) en angle Dex1 par interp([5, 7] -> [0, 5.4])
 TRIGGER_MIN, TRIGGER_MAX = 5.0, 7.0
+#: grip : correction active au-delà de 0.5, relâchée en dessous de 0.3 (hystérésis)
+GRIP_ON, GRIP_OFF = 0.5, 0.3
+#: bornes du décalage de correction (depuis le début du chunk courant)
+MAX_DELTA_POS, MAX_DELTA_ROT = 0.15, 0.6
+#: saut de la manette entre deux pas au-delà duquel on suppose une perte de suivi
+TRACKING_JUMP = 0.05
+#: délai max d'une requête au serveur (s)
+RECV_TIMEOUT = 3.0
+
+
+class PolicyError(RuntimeError):
+    """Le serveur n'a pas répondu à temps, a renvoyé une erreur, ou des actions invalides."""
 
 
 def _T(R=None, p=None) -> np.ndarray:
@@ -95,7 +115,7 @@ class PolicyBridge:
         from websockets.sync.client import connect
         self.ws = connect(uri, max_size=None, open_timeout=10)
         self.packer = msgpack_numpy.Packer()
-        self.meta = msgpack_numpy.unpackb(self.ws.recv())
+        self.meta = msgpack_numpy.unpackb(self.ws.recv(timeout=RECV_TIMEOUT))
         self.instruction, self.unnorm_key, self.advantage = instruction, unnorm_key, advantage
         self.exec_steps, self.freq = exec_steps, frequency
         self.max_step = max_speed / frequency
@@ -104,17 +124,33 @@ class PolicyBridge:
         self.torso_pitch_index, self.torso_pitch_const = torso_pitch_index, torso_pitch
         self.control = {"left": control_left, "right": control_right}
         self.conv = FrameConverter()
+        self.uri = uri
         self.reset()
 
     # ------------------------------------------------------------------ cycle de vie
     def reset(self) -> None:
-        """Début d'essai : vide le chunk et la mémoire du serveur (policy_reset)."""
+        """Début d'essai : vide le chunk et la mémoire du serveur (policy_reset). Reconnecte si la
+        connexion précédente a été perdue."""
+        self.pause()
+        self.step_count = 0
+        try:
+            self.ws.send(self.packer.pack({"type": "policy_reset"}))
+            self.ws.recv(timeout=RECV_TIMEOUT)
+        except Exception:
+            from websockets.sync.client import connect
+            self.close()
+            self.ws = connect(self.uri, max_size=None, open_timeout=10)
+            self.meta = msgpack_numpy.unpackb(self.ws.recv(timeout=RECV_TIMEOUT))
+            self.ws.send(self.packer.pack({"type": "policy_reset"}))
+            self.ws.recv(timeout=RECV_TIMEOUT)
+
+    def pause(self) -> None:
+        """La politique cesse de piloter (image absente, erreur, fin d'essai) : à la reprise, borne de
+        vitesse repartant de la pose MESURÉE, nouveau chunk, pas de correction en cours."""
         self.chunk, self.k = None, 0
         self.last_target = {s: None for s in SIDES}
-        self.corr = {s: None for s in SIDES}          # (pose manette à l'appui) si correction active
-        self.step_count = 0
-        self.ws.send(self.packer.pack({"type": "policy_reset"}))
-        self.ws.recv()
+        self.corr = {s: None for s in SIDES}          # {"P0": pose manette de référence, "prev": pose au pas précédent}
+        self.grip_on = {s: False for s in SIDES}
 
     def close(self) -> None:
         try:
@@ -147,50 +183,92 @@ class PolicyBridge:
         if self.advantage:
             obs["advantage"] = self.advantage
         t0 = time.perf_counter()
-        self.ws.send(self.packer.pack({"type": "get_action", "obs": obs}))
-        raw = self.ws.recv()
+        try:
+            self.ws.send(self.packer.pack({"type": "get_action", "obs": obs}))
+            raw = self.ws.recv(timeout=RECV_TIMEOUT)
+        except Exception as e:
+            raise PolicyError(f"serveur WLA sans réponse ({type(e).__name__}: {e})") from e
         if isinstance(raw, str):
-            raise RuntimeError(f"erreur du serveur WLA :\n{raw}")
+            raise PolicyError(f"erreur du serveur WLA :\n{raw}")
         act = msgpack_numpy.unpackb(raw)
-        self.chunk = {s: np.asarray(act[f"action.{s}_ee_rpy"])[0] for s in SIDES}
-        self.chunk_grip = {s: np.asarray(act[f"action.{s}_gripper"])[0, :, 0] for s in SIDES}
-        self.k = 0
+        try:
+            chunk = {s: np.asarray(act[f"action.{s}_ee_rpy"], float)[0] for s in SIDES}
+            grip = {s: np.asarray(act[f"action.{s}_gripper"], float)[0, :, 0] for s in SIDES}
+        except Exception as e:
+            raise PolicyError(f"réponse du serveur mal formée ({e})") from e
+        if not all(np.isfinite(chunk[s]).all() and np.isfinite(grip[s]).all() for s in SIDES):
+            raise PolicyError("actions non finies (NaN/inf) renvoyées par le modèle")
+        self.chunk, self.chunk_grip, self.k = chunk, grip, 0
         self.last_latency = time.perf_counter() - t0
 
     # ------------------------------------------------------------------ un pas de contrôle
+    def measured_ik(self, arm_q: np.ndarray, body_q) -> dict:
+        """Poses IK correspondant aux angles MESURÉS (pour tenir la pose ou borner une reprise)."""
+        pitch = self._pitch(body_q)
+        return {s: self.conv.wla_to_ik(s, self.conv.ee_wla(s, arm_q[:7] if s == "left" else arm_q[7:14], pitch), pitch)
+                for s in SIDES}
+
+    def _controller_world(self, tele_data, side: str) -> np.ndarray:
+        """Pose de la manette en repère MONDE : la téléop la rend relative à la position de la tête
+        (translation seulement) ; on rajoute la tête pour que se pencher ne déplace pas le bras."""
+        P = np.asarray(getattr(tele_data, f"{side}_wrist_pose"), float).copy()
+        head = getattr(tele_data, "head_pose", None)
+        if head is not None:
+            P[:3, 3] += np.asarray(head, float)[:3, 3]
+        return P
+
     def step(self, images_bgr: dict, arm_q: np.ndarray, grip_dex1: np.ndarray, body_q, tele_data) -> dict:
         """-> {"left"/"right": cible IK 4×4, "trigger": {côté: valeur gâchette}, "intervention": bool}.
 
         ``images_bgr`` : {"head": œil gauche 480×640 BGR, "left_wrist", "right_wrist"} ; ``arm_q`` (14) mesuré ;
-        ``grip_dex1`` (2) mesuré (unité Dex1) ; ``body_q`` (35) ; ``tele_data`` : TeleData ou None."""
+        ``grip_dex1`` (2) mesuré (unité Dex1) ; ``body_q`` (35) ; ``tele_data`` : TeleData ou None.
+        Lève ``PolicyError`` si le serveur ne répond pas ou répond des actions invalides."""
         pitch = self._pitch(body_q)
-        squeeze = {s: bool(tele_data is not None and getattr(tele_data, f"{s}_ctrl_squeezeValue", 0.0) > 0.5)
-                   for s in SIDES}
+        meas = self.measured_ik(arm_q, body_q)
+        for s in SIDES:                                    # reprise : la borne part de la pose mesurée
+            if self.last_target[s] is None:
+                self.last_target[s] = meas[s]
+            v = float(getattr(tele_data, f"{s}_ctrl_squeezeValue", 0.0)) if tele_data is not None else 0.0
+            self.grip_on[s] = v > GRIP_OFF if self.grip_on[s] else v > GRIP_ON
         # fin de correction -> replanifier depuis l'état corrigé
-        if any(self.corr[s] is not None and not squeeze[s] for s in SIDES):
+        if any(self.corr[s] is not None and not self.grip_on[s] for s in SIDES):
             self.chunk = None
-        if self.chunk is None or self.k >= min(self.exec_steps, len(self.chunk["left"])):
+        new_chunk = self.chunk is None or self.k >= min(self.exec_steps, len(self.chunk["left"]))
+        if new_chunk:
             self._query(images_bgr, arm_q, grip_dex1, pitch)
 
         out = {"trigger": {}, "intervention": False}
         for i, s in enumerate(SIDES):
-            q_meas = arm_q[:7] if s == "left" else arm_q[7:14]
             if not self.control[s]:
-                out[s] = self.conv.wla_to_ik(s, self.conv.ee_wla(s, q_meas, pitch), pitch)   # tenir la pose
+                out[s] = meas[s]                           # bras non piloté : tenir la pose mesurée
+                out["trigger"][s] = dex1_to_trigger(float(grip_dex1[i]))
                 continue
             T = self.conv.wla_to_ik(s, xyz_rpy_to_T(self.chunk[s][self.k]), pitch)
             g = float(self.chunk_grip[s][self.k])
-            if squeeze[s]:
-                P = np.asarray(getattr(tele_data, f"{s}_wrist_pose"), float)
-                if self.corr[s] is None:
-                    self.corr[s] = P.copy()
-                P0 = self.corr[s]
+            if self.grip_on[s]:
+                P = self._controller_world(tele_data, s)
+                c = self.corr[s]
+                if c is None or new_chunk:
+                    # début de correction, ou nouveau chunk (déjà parti de la pose corrigée) : le
+                    # décalage repart de zéro depuis la pose actuelle de la manette
+                    c = self.corr[s] = {"P0": P.copy(), "prev": P.copy()}
+                elif np.linalg.norm(P[:3, 3] - c["prev"][:3, 3]) > TRACKING_JUMP:
+                    P = c["prev"]                          # saut de manette : perte de suivi supposée
+                c["prev"] = P.copy()
+                d = self.delta_scale * (P[:3, 3] - c["P0"][:3, 3])
+                n = float(np.linalg.norm(d))
+                if n > MAX_DELTA_POS:
+                    d *= MAX_DELTA_POS / n
                 T = T.copy()
-                T[:3, 3] += self.delta_scale * (P[:3, 3] - P0[:3, 3])
+                T[:3, 3] += d
                 if self.rot_delta:
-                    T[:3, :3] = (P[:3, :3] @ P0[:3, :3].T) @ T[:3, :3]
+                    rv = Rotation.from_matrix(P[:3, :3] @ c["P0"][:3, :3].T).as_rotvec()
+                    a = float(np.linalg.norm(rv))
+                    if a > MAX_DELTA_ROT:
+                        rv *= MAX_DELTA_ROT / a
+                    T[:3, :3] = Rotation.from_rotvec(rv).as_matrix() @ T[:3, :3]
                 trig = float(getattr(tele_data, f"{s}_ctrl_triggerValue", 10.0))
-                if trig < 9.0:                                       # gâchette pressée : l'opérateur tient la pince
+                if trig < TRIGGER_MAX:                     # gâchette pressée à plus de 30 % : pince à l'opérateur
                     g = float(np.interp(trig, [TRIGGER_MIN, TRIGGER_MAX], [0.0, DEX1_OPEN]))
                 out["intervention"] = True
             else:
