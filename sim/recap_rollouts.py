@@ -57,8 +57,11 @@ async def run_episode(ws, packer, sim: G1DSim, task, rng, args, w: SimEpisodeWri
         if success_step is None and lifted() > task.lift_success:
             success_step = tt
 
-    # 1. la politique joue
-    while t < args.max_steps and success_step is None:
+    def done() -> bool:          # réussite + tenue de ``hold_steps`` pas (l'issue se juge à la FIN)
+        return success_step is not None and t >= success_step + args.hold_steps
+
+    # 1. la politique joue (y compris la tenue après la réussite)
+    while t < args.max_steps and not done():
         obs, _ = build_obs(sim, args.instruction, args.unnorm_key)
         if args.advantage:
             obs["advantage"] = args.advantage
@@ -89,7 +92,7 @@ async def run_episode(ws, packer, sim: G1DSim, task, rng, args, w: SimEpisodeWri
             if success_step is None and moved > args.knock_cm / 100 and lifted() < 0.02:
                 knocked = True
                 break
-            if success_step is not None or t >= args.max_steps:
+            if done() or t >= args.max_steps:
                 break
         prev_exec = n
         if knocked or (success_step is None and t >= args.takeover_step):
@@ -109,7 +112,7 @@ async def run_episode(ws, packer, sim: G1DSim, task, rng, args, w: SimEpisodeWri
         t = t0 + int(res.get("steps", 0))
         z0 = z0_before
 
-    # 3. quelques pas de tenue après la réussite (fin d'épisode propre)
+    # 3. issue jugée à la fin : l'objet doit être encore soulevé (une prise qui lâche = échec)
     outcome = "success" if success_step is not None and lifted() > task.lift_success else "failure"
     return {"success_step": success_step, "takeover_step": takeover_step, "outcome": outcome,
             "steps": t, "lifted": round(lifted(), 4)}
@@ -163,6 +166,8 @@ def main() -> None:
     ap.add_argument("--takeover-step", dest="takeover_step", type=int, default=220,
                     help="l'opérateur prend la main si pas de réussite à ce pas")
     ap.add_argument("--knock-cm", dest="knock_cm", type=float, default=3.0)
+    ap.add_argument("--hold-steps", dest="hold_steps", type=int, default=20,
+                    help="pas de tenue après la réussite, l'issue est jugée à la fin")
     ap.add_argument("--no-operator", dest="operator", action="store_false",
                     help="pas de corrections (rollouts purement autonomes)")
     ap.add_argument("--exec-steps", dest="exec_steps", type=int, default=30)

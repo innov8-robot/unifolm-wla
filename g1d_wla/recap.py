@@ -63,12 +63,29 @@ def state_vector(step: dict) -> np.ndarray:
                       + [st["left_ee"]["qpos"][0] / 5.4, st["right_ee"]["qpos"][0] / 5.4, body[13]], np.float32)
 
 
-def steps_to_go(doc: dict, horizon: int) -> np.ndarray:
-    """Cible par pas : pas restants jusqu'à la réussite / horizon (0 après la réussite, 1 si échec)."""
-    n = len(doc["data"])
+def episode_outcome(doc: dict, is_demo: bool = False) -> tuple[str, int | None]:
+    """(« success » | « failure » | « unknown », pas de réussite). Une démo sans en-tête d'issue
+    (enregistrement réel xr_teleoperate) est une réussite à son dernier pas."""
     info = doc["info"]
-    s = info.get("success_step")
-    if info.get("outcome", "success" if s is not None else "failure") != "success" or s is None:
+    out, s = info.get("outcome"), info.get("success_step")
+    if out is None and is_demo:
+        return "success", len(doc["data"]) - 1 if s is None else s
+    if out == "success" and s is not None:
+        return "success", int(s)
+    if out == "failure":
+        return "failure", None
+    return "unknown", None
+
+
+def steps_to_go(doc: dict, horizon: int, is_demo: bool = False) -> np.ndarray | None:
+    """Cible par pas : pas restants jusqu'à la réussite / horizon (0 après, 1 si échec) ; None si
+    l'issue est inconnue (épisode ignoré). L'horizon doit dépasser la durée des épisodes corrigés
+    (~400 pas en sim), sinon leurs premiers pas ont la même cible qu'un échec."""
+    n = len(doc["data"])
+    out, s = episode_outcome(doc, is_demo)
+    if out == "unknown":
+        return None
+    if out == "failure":
         return np.ones(n, np.float32)
     t = np.arange(n)
     return np.clip((s - t) / horizon, 0.0, 1.0).astype(np.float32)
@@ -126,61 +143,87 @@ class ValueHead(nn.Module):
         return torch.sigmoid(self.net(torch.cat([f, s], dim=-1))).squeeze(-1)
 
 
-def build_dataset(eps: list[Path], enc: Encoder, horizon: int):
-    F, S, Y, E = [], [], [], []
-    for k, ep in enumerate(eps):
+def build_dataset(eps: list[Path], enc: Encoder, horizon: int, demo_set: set):
+    F, S, Y, E, kept = [], [], [], [], []
+    for ep in eps:
         doc = load(ep)
+        y = steps_to_go(doc, horizon, is_demo=ep in demo_set)
+        if y is None:
+            log.warning("%s : issue inconnue (pas de X/Y en fin d'essai ?) -> ignoré", ep)
+            continue
         F.append(episode_features(ep, doc, enc))
         S.append(np.stack([state_vector(st) for st in doc["data"]]))
-        Y.append(steps_to_go(doc, horizon))
-        E.append(np.full(len(doc["data"]), k))
-    return (np.concatenate(F), np.concatenate(S), np.concatenate(Y), np.concatenate(E))
+        Y.append(y)
+        E.append(np.full(len(doc["data"]), len(kept)))
+        kept.append(ep)
+    return np.concatenate(F), np.concatenate(S), np.concatenate(Y), np.concatenate(E), kept
 
 
-def cmd_train_value(a) -> None:
-    eps = episode_dirs(a.episodes)
-    if not eps:
-        raise SystemExit("aucun épisode")
-    enc = Encoder(a.device)
-    F, S, Y, E = build_dataset(eps, enc, a.horizon)
-    n_fail = sum(load(e)["info"].get("outcome") == "failure" for e in eps)
-    log.info("%d épisodes (%d échecs), %d frames", len(eps), n_fail, len(Y))
-    rng = np.random.default_rng(0)
-    val_eps = set(rng.choice(len(eps), max(1, len(eps) // 10), replace=False).tolist())
-    va = np.isin(E, list(val_eps))
-    s_mean, s_std = S.mean(0), S.std(0) + 1e-6
+def _fit(F, S, Y, idx, s_mean, s_std, a, rng, val_idx=None, tag=""):
     dev = a.device
     tF, tS, tY = (torch.from_numpy(x).to(dev) for x in (F, (S - s_mean) / s_std, Y))
-    tr_idx, va_idx = np.where(~va)[0], np.where(va)[0]
     model = ValueHead(F.shape[1], S.shape[1]).to(dev)
     opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=1e-4)
     for epoch in range(a.epochs):
         model.train()
-        perm = rng.permutation(tr_idx)
+        perm = rng.permutation(idx)
         for i in range(0, len(perm), 256):
             b = torch.from_numpy(perm[i:i + 256]).to(dev)
             loss = nn.functional.mse_loss(model(tF[b], tS[b]), tY[b])
             opt.zero_grad()
             loss.backward()
             opt.step()
-        if epoch % max(1, a.epochs // 5) == 0 or epoch == a.epochs - 1:
-            model.eval()
-            with torch.no_grad():
-                vb = torch.from_numpy(va_idx).to(dev)
-                err = (model(tF[vb], tS[vb]) - tY[vb]).abs().mean().item() * a.horizon
-            log.info("époque %d : perte %.4f | validation : erreur moyenne %.1f pas", epoch, loss.item(), err)
+    err = None
+    if val_idx is not None and len(val_idx):
+        model.eval()
+        with torch.no_grad():
+            vb = torch.from_numpy(val_idx).to(dev)
+            err = (model(tF[vb], tS[vb]) - tY[vb]).abs().mean().item() * a.horizon
+        log.info("%s perte finale %.4f | épisodes tenus hors entraînement : erreur moyenne %.1f pas", tag, loss.item(), err)
+    return model, err
+
+
+def cmd_train_value(a) -> None:
+    """Entraînement en K PLIS (cross-fitting) : chaque épisode est ensuite étiqueté par le modèle qui
+    ne l'a PAS vu. Sinon un modèle ajusté sur ses propres données donne une progression « parfaite »
+    sur tout épisode réussi et l'étiquetage devient trivial (presque tout positif)."""
+    demo_set = set(episode_dirs(a.demos)) if a.demos else set()
+    eps = episode_dirs(list(a.episodes) + list(a.demos or []))
+    if not eps:
+        raise SystemExit("aucun épisode")
+    enc = Encoder(a.device)
+    F, S, Y, E, eps = build_dataset(eps, enc, a.horizon, demo_set)
+    outcomes = [episode_outcome(load(e), e in demo_set)[0] for e in eps]
+    log.info("%d épisodes (%d réussis, %d ratés), %d frames, horizon %d", len(eps), outcomes.count("success"),
+             outcomes.count("failure"), len(Y), a.horizon)
+    rng = np.random.default_rng(0)
+    s_mean, s_std = S.mean(0), S.std(0) + 1e-6
+    k = max(2, min(a.folds, len(eps)))
+    fold_of = rng.permutation(np.arange(len(eps)) % k)
+    models, errs = [], []
+    for f in range(k):
+        tr, va = np.where(fold_of[E] != f)[0], np.where(fold_of[E] == f)[0]
+        m, err = _fit(F, S, Y, tr, s_mean, s_std, a, rng, va, tag=f"pli {f + 1}/{k} :")
+        models.append(m.state_dict())
+        errs.append(err)
+    log.info("validation croisée : erreur moyenne %.1f pas (horizon %d)", float(np.mean(errs)), a.horizon)
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    torch.save({"state_dict": model.state_dict(), "s_mean": s_mean, "s_std": s_std, "horizon": a.horizon,
-                "d_img": F.shape[1], "d_state": S.shape[1], "episodes": [str(e) for e in eps]}, out)
-    log.info("modèle de valeur écrit : %s", out)
+    torch.save({"folds": models, "fold_of": {str(e): int(fold_of[i]) for i, e in enumerate(eps)},
+                "s_mean": s_mean, "s_std": s_std, "horizon": a.horizon, "d_img": F.shape[1], "d_state": S.shape[1],
+                "cv_error_steps": float(np.mean(errs))}, out)
+    log.info("modèle de valeur écrit : %s (%d plis)", out, k)
 
 
 def load_value(path: str, device: str):
+    """-> (liste des modèles par pli, checkpoint)."""
     ck = torch.load(path, map_location=device, weights_only=False)
-    m = ValueHead(ck["d_img"], ck["d_state"]).to(device).eval()
-    m.load_state_dict(ck["state_dict"])
-    return m, ck
+    models = []
+    for sd in ck["folds"]:
+        m = ValueHead(ck["d_img"], ck["d_state"]).to(device).eval()
+        m.load_state_dict(sd)
+        models.append(m)
+    return models, ck
 
 
 # ------------------------------------------------------------------ étiquetage
@@ -197,7 +240,7 @@ def cmd_label(a) -> None:
     if not a.value:
         raise SystemExit("--value requis (ou --all-positive)")
     enc = Encoder(a.device)
-    model, ck = load_value(a.value, a.device)
+    models, ck = load_value(a.value, a.device)
     H = ck["horizon"]
     n_pos = n_neg = n_int = 0
     for ep in eps:
@@ -206,15 +249,19 @@ def cmd_label(a) -> None:
         f = torch.from_numpy(episode_features(ep, doc, enc)).to(a.device)
         s = np.stack([state_vector(st) for st in doc["data"]])
         s = torch.from_numpy((s - ck["s_mean"]) / ck["s_std"]).float().to(a.device)
+        # modèle du pli qui n'a PAS vu cet épisode ; épisode nouveau : moyenne des plis
+        fold = ck["fold_of"].get(str(ep))
+        use = [models[fold]] if fold is not None else models
         with torch.no_grad():
-            v = model(f, s).cpu().numpy() * H              # pas restants prédits
+            v = np.mean([m(f, s).cpu().numpy() for m in use], axis=0) * H   # pas restants prédits
         inter = np.array([float(st.get("intervention", 0)) for st in doc["data"]])
-        adv = np.zeros(n, np.float32)
-        for t0 in range(0, n, a.chunk):
-            t1 = min(t0 + a.chunk, n - 1)
-            progress = v[t0] - v[t1]                       # pas gagnés sur ce morceau
-            nominal = t1 - t0
-            adv[t0:t0 + a.chunk] = 1.0 if nominal > 0 and progress >= a.threshold * nominal else 0.0
+        # étiquette PAR PAS sur la fenêtre [t, t + chunk) : c'est le morceau d'action que le
+        # modèle prédit à partir du pas t (et pas un bloc fixe aligné sur 0)
+        t1 = np.minimum(np.arange(n) + a.chunk, n - 1)
+        nominal = t1 - np.arange(n)
+        progress = v - v[t1]
+        adv = ((nominal > 0) & (progress >= a.threshold * np.maximum(nominal, 1))).astype(np.float32)
+        adv[nominal == 0] = adv[max(0, n - 2)] if n > 1 else 1.0
         adv[inter > 0.5] = 1.0                             # corrections de l'opérateur : positives
         for st, x in zip(doc["data"], adv):
             st["advantage"] = float(x)
@@ -236,8 +283,12 @@ def main() -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     t = sub.add_parser("train-value", help="entraîner le modèle de valeur")
     t.add_argument("--episodes", nargs="+", required=True, help="dossiers d'épisodes (démos + rollouts)")
+    t.add_argument("--demos", nargs="*", default=None,
+                   help="dossiers de DÉMOS sans en-tête d'issue (réel) : comptées réussies à leur dernier pas")
     t.add_argument("--out", required=True)
-    t.add_argument("--horizon", type=int, default=300)
+    t.add_argument("--horizon", type=int, default=500,
+                   help="doit dépasser la durée des épisodes corrigés (max-steps + expert)")
+    t.add_argument("--folds", type=int, default=5, help="validation croisée : chaque épisode étiqueté hors pli")
     t.add_argument("--epochs", type=int, default=60)
     t.add_argument("--lr", type=float, default=3e-4)
     t.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")

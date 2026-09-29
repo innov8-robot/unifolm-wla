@@ -66,9 +66,13 @@ evaluate() {  # evaluate <scene> <tag> [--advantage positive]
 train() {  # train <run_id> <config>
     local run=$1 cfg=$2 free_gb
     free_gb=$(df -BG --output=avail "$ROOT" | tail -1 | tr -dc 0-9)
-    if (( free_gb < 16 )); then say "ARRÊT : ${free_gb} Go libres"; exit 1; fi
+    # un checkpoint fait 12,5 Go : 13 Go suffisent (16 faisait sauter le témoin, audit du 29/09)
+    if (( free_gb < 13 )); then say "ARRÊT : ${free_gb} Go libres, il en faut 13 pour $run"; exit 1; fi
     say "entraînement $run ($cfg)"
     rm -rf "playground/Checkpoints/$run"
+    # le cache Arrow est indexé par chemin + colonnes, pas par contenu : un dataset reconverti au
+    # même chemin relirait d'anciennes étiquettes (audit du 29/09)
+    rm -rf playground/cache/arrow_cache
     run_id=$run bash examples/unifolm_wla/train_files/run_finetune_g1d.sh \
         --datasets.vla_data.data_config_path $CFG/$cfg \
         --datasets.vla_data.per_device_batch_size 2 --datasets.vla_data.num_workers 4 \
