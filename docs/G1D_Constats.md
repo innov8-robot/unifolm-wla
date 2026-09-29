@@ -482,3 +482,35 @@ Il n'enregistre **pas** les poses effecteur, la pose du buste, la pose caméra, 
 
 Le fine-tuning sur nos démos reste la voie attendue. Voir la section 5 du briefing.
 
+---
+
+## 12. Validation de toute la chaîne en sim (29 septembre 2026)
+
+**[VÉRIFIÉ]** Tâche : saisir un cube rouge de 4 cm, tiré au hasard dans une zone de 10 × 14 cm devant le bras droit, puis le soulever d'au moins 5 cm.
+
+1. **Démos** : 150 démos d'un expert scripté, gardées sur 153 essais. L'expert garde l'orientation de pince de départ du G1. Elles sont enregistrées au format xr_teleoperate, avec la vue de tête brute.
+2. **Conversion** : par `g1d_wla.convert_teleop`, le même convertisseur que pour le robot. Le dataset fait 23 700 frames.
+3. **Fine-tuning** : 3 000 pas, lots de 2, VLM gelé, projecteur et tête DiT entraînés, en 1 h 26 sur la RTX 5090 Laptop.
+4. **Évaluation** : en boucle fermée, sur 30 positions jamais vues.
+
+| Modèle | Pas par épisode | Réussites |
+|---|---|---|
+| Base, zero-shot | 200 | 0 / 20 |
+| Fine-tuné | 200 | 4 / 30 |
+| Fine-tuné | 300 | **23 / 30** |
+
+**Ce que ça valide** :
+
+- les repères WLA, avec la base en bassin virtuel et l'effecteur WLA ;
+- l'unité de pince ;
+- les clés du convertisseur et la config de données ;
+- les normaliseurs du Base ;
+- le correctif du projecteur ;
+- l'inférence en boucle fermée.
+
+Le modèle apprend une nouvelle tâche à partir de 150 démos au format que produira le robot.
+
+**Ce que ça ne valide pas** : le passage au réel. Le rendu de sim est loin des vraies images, et l'expert est parfaitement régulier.
+
+**[INFÉRÉ]** Le modèle exécute la séquence environ 1,5 fois plus lentement que l'expert. Deux pistes : n'exécuter que 20 des 30 pas de chaque chunk, et trop peu de pas d'entraînement. À tester : exécuter les chunks entiers, et entraîner plus longtemps.
+

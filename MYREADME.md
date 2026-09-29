@@ -36,7 +36,8 @@ Ce fork adapte **UnifoLM-WLA-1.0** d'Unitree au **G1-D** : robot sur base roulan
 | Client sim ↔ serveur WLA, test zero-shot | **Fait** en sim, pas de prise réussie |
 | Poids UnifoLM-WLA-1.0-Base téléchargés | **Fait** |
 | Correction du gel du robot-state projector pour le fine-tuning | **Fait et vérifié** |
-| Fine-tuning sur nos démos | Recette prête, testée 5 pas sur `mon_test` |
+| Validation de toute la chaîne en sim, tâche cube | **Fait** : 23/30 après fine-tuning, contre 0/20 en zero-shot |
+| Fine-tuning sur de vraies démos | Recette prête et validée en sim |
 | Push de `g1d-port` sur GitHub | **Fait**, à refaire après chaque étape |
 
 ### TODO
@@ -54,6 +55,7 @@ Par ordre de priorité. Cocher au fur et à mesure.
   - [ ] la hauteur de colonne, à ajouter à l'enregistrement ;
   - [ ] si possible, la calibration de la stéréo de tête.
 - [ ] **Installer le poste de démo** : une table à environ 0,87 m et le buste penché d'environ 0.166 rad.
+- [x] **Valider la chaîne complète en sim** : 150 démos expertes de la tâche cube, fine-tuning de 3 000 pas, puis **23 prises sur 30** positions jamais vues. Le zero-shot faisait 0 sur 20. Voir « Validation en sim » plus bas.
 - [ ] **Enregistrer, puis fine-tuner** : la recette est prête et testée sur `mon_test`. Elle tourne à environ 1,7 s par pas sur la RTX 5090. Le correctif du projecteur gelé est **vérifié** : 1 397 M paramètres entraînables, soit la tête DiT plus les 6,87 M du projecteur. Reste à enregistrer de vraies démos iso, voir les points précédents.
 
 ---
@@ -253,6 +255,40 @@ MUJOCO_GL=egl ~/miniconda3/envs/unitree_lerobot/bin/python sim/wla_client.py \
 
 - Le serveur occupe environ 11,6 Go de mémoire graphique.
 - `--debug_save_dir` écrit à chaque requête les images reçues et le chunk prédit.
+
+### Validation en sim : démos, fine-tuning, évaluation
+
+Chaîne complète sans robot, sur une tâche simple : saisir un cube rouge de 4 cm et le soulever. Elle passe par les **mêmes** convertisseur, config et recette que les vraies démos.
+
+```bash
+SIMPY=~/miniconda3/envs/unitree_lerobot/bin/python
+# 1. démos expertes au format xr_teleoperate (~1,5 s/épisode)
+MUJOCO_GL=egl $SIMPY sim/record_sim_demos.py --n 150 --out playground/sim_raw/sim_cube
+# 2. conversion au format WLA (~15 min)
+.venv/bin/python -m g1d_wla.convert_teleop --raw-dir playground/sim_raw/sim_cube \
+    --out-dir playground/Datasets/g1d_sim/sim_cube --repo-id innov8/g1d_sim_cube
+# 3. fine-tuning, ~1 h 30
+run_id=g1d_sim_cube_v1 bash examples/unifolm_wla/train_files/run_finetune_g1d.sh \
+    --datasets.vla_data.data_config_path unifolm_wla/dataloader/multi_source_dataset/configs/g1d_sim.yaml \
+    --datasets.vla_data.per_device_batch_size 2 --trainer.gradient_accumulation_steps 1 \
+    --trainer.max_train_steps 3000 --trainer.num_warmup_steps 100 --trainer.save_interval 1500
+# 4. évaluation : serveur sur le checkpoint, puis client
+.venv/bin/python -m model_server.action_server_wbc_msgpack_unitree --unnorm_key UnifoLM_G1_Dex1 \
+    --ckpt_path playground/Checkpoints/g1d_sim_cube_v1/checkpoints/steps_3000_model.safetensors
+MUJOCO_GL=egl $SIMPY sim/wla_client.py --scene cube --instruction "pick up the red cube" \
+    --head-view raw --episodes 30 --max-steps 300
+```
+
+| Modèle | Pas par épisode | Réussites |
+|---|---|---|
+| Base, zero-shot | 200 | 0 / 20 |
+| Fine-tuné, 3 000 pas | 200 | 4 / 30 |
+| Fine-tuné, 3 000 pas | 300 | **23 / 30** |
+
+- **Mêmes positions** : les 30 positions de cube sont identiques d'une ligne à l'autre, et aucune n'a été vue à l'entraînement.
+- **Lenteur** : le modèle enchaîne correctement pré-saisie, descente, fermeture et montée, mais environ 1,5 fois plus lentement que l'expert, qui fait la tâche en 158 pas. D'où l'écart entre 200 et 300 pas.
+- **Perte** : environ 0,027 au pas 100, 0,004 au pas 1 000, et entre 0,002 et 0,01 à la fin.
+- **Échecs** : une partie ont lieu dans le fond de la zone, en y très négatif.
 
 ### Fine-tuning
 
