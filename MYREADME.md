@@ -37,6 +37,9 @@ Ce fork adapte **UnifoLM-WLA-1.0** d'Unitree au **G1-D** : robot sur base roulan
 | Poids UnifoLM-WLA-1.0-Base téléchargés | **Fait** |
 | Correction du gel du robot-state projector pour le fine-tuning | **Fait et vérifié** |
 | Validation de toute la chaîne en sim, tâche cube | **Fait** : 23/30 après fine-tuning, contre 0/20 en zero-shot |
+| Tâche Novares en sim (prise peinte) | **Fait** : 27/30 avec 50 démos, 22/30 avec 25, 27/30 avec 10 |
+| Boucle RECAP / Delta-0 | Brique implémentée, audit corrigé. Expérience en sim en cours (zone « à gauche ») |
+| Mode politique avec correction en delta dans la téléop | Fait, testé hors robot, **non validé sur le robot** |
 | Fine-tuning sur de vraies démos | Recette prête et validée en sim |
 | Push de `g1d-port` sur GitHub | **Fait**, à refaire après chaque étape |
 
@@ -57,8 +60,9 @@ Par ordre de priorité. Cocher au fur et à mesure.
 - [ ] **Installer le poste de démo** : une table à environ 0,87 m et le buste penché d'environ 0.166 rad.
 - [x] **Valider la chaîne complète en sim** : 150 démos expertes de la tâche cube, fine-tuning de 3 000 pas, puis **23 prises sur 30** positions jamais vues. Le zero-shot faisait 0 sur 20. Voir « Validation en sim » plus bas.
 - [x] **Améliorer la vitesse et réduire le nombre de démos, en sim** : chunks entiers, 28/30 en 151 pas au lieu de 222. Real-time chunking ajouté, avec raccord doux : 25/30 en 151 pas en replanifiant tous les 10 pas. **10 démos suffisent** pour 25/30, et 25 démos donnent 30/30.
-- [ ] **Tâche Novares en sim** : prise peinte de mpc_any. 50 démos : **27/30**, à la vitesse de l'expert. 25 et 10 démos en cours.
-- [ ] **Boucle RECAP / Delta-0 (amélioration par essais et corrections)** : brique implémentée et testée sans GPU. Expérience en sim en file d'attente (`sim/experiments/queue_recap.sh`, journal `playground/queue_logs/recap.log`). Voir section 15 des constats.
+- [x] **Tâche Novares en sim** : prise peinte de mpc_any. 50 démos : **27/30**, à la vitesse de l'expert. 25 démos : 22/30. 10 démos : 27/30.
+- [ ] **Boucle RECAP / Delta-0 (amélioration par essais et corrections)** : brique implémentée, auditée et corrigée. Expérience en sim en cours dans la zone « à gauche », où le modèle à 10 démos ne fait que 7/15 (`sim/experiments/queue_recap.sh`, journal `playground/queue_logs/recap.log`). Voir section 15 des constats.
+- [ ] **Essayer le mode politique avec corrections sur le robot** : `--policy-uri` dans la téléop, procédure dans `teleoperation/REAMDEG1D.md`. Corrigé après audit de sécurité et testé hors robot. Premier essai : vitesse bridée et arrêt d'urgence à portée.
 - [ ] **Enregistrer, puis fine-tuner** : la recette est prête et testée sur `mon_test`. Elle tourne à environ 1,7 s par pas sur la RTX 5090. Le correctif du projecteur gelé est **vérifié** : 1 397 M paramètres entraînables, soit la tête DiT plus les 6,87 M du projecteur. Reste à enregistrer de vraies démos iso, voir les points précédents.
 
 ---
@@ -77,11 +81,15 @@ unifolm-wla/
 ├── unifolm_wla/               # code du modèle, d'Unitree
 ├── model_server/              # serveur d'inférence WLA, websocket + msgpack
 ├── examples/                  # scripts de fine-tuning et d'évaluation, d'Unitree
+├── g1d_wla/                   # conventions iso WLA (frames.py), FK numpy, convertisseur, RECAP (recap.py)
 ├── sim/                       # notre sim MuJoCo du G1-D + Dex1
 │   ├── README.md
 │   ├── g1d_sim/               # G1DSim : physique, FK/IK, caméras, repères WLA
-│   ├── assets/                # scène, URDF, meshes (pièce Novares NON versionnée)
-│   └── smoke.py               # 22 vérifications de bout en bout
+│   ├── assets/                # scènes, URDF, meshes (pièce Novares NON versionnée)
+│   ├── smoke.py               # 22 vérifications de bout en bout
+│   ├── cube_task.py, novares_task.py, stack_task.py, sim_tasks.py   # tâches et experts
+│   ├── record_sim_demos.py, recap_rollouts.py, wla_client.py        # démos, rollouts, évaluation
+│   └── experiments/           # files de travaux (queue_novares.sh, queue_recap.sh)
 └── teleoperation/             # notre téléop, xr_teleoperate personnalisé
     ├── setup_env.sh           # crée l'env conda g1d_teleop
     ├── REAMDEG1D.md           # démarrage téléop pas à pas
@@ -134,6 +142,8 @@ Voir `docs/train_action_expert_en.md` pour l'installation complète.
 ```bash
 MUJOCO_GL=egl ~/miniconda3/envs/unitree_lerobot/bin/python sim/smoke.py   # 22/22 attendu
 ```
+
+Sur un clone neuf, sans les maillages Novares non versionnés, `G1DSim()` et le smoke test basculent seuls sur la scène cube.
 
 ```python
 import sys; sys.path.insert(0, "sim")
@@ -210,11 +220,11 @@ La caméra de tête doit être la **stéréo stock**, en binoculaire 480×1280, 
 
 ```
 Téléop xr_teleoperate ──► JSON + JPEG ──► convertisseur ──► LeRobot v3 format WLA
-   (teleoperation/)                     (À ÉCRIRE)          (clés des datasets G1 Dex1)
+   (teleoperation/)                  (g1d_wla/convert_teleop.py) (clés des datasets G1 Dex1)
                                                                    │
             ┌──────────────────────────────────────────────────────┘
             ▼
-Fine-tuning WLA, VLM gelé ──► checkpoint ──► model_server ◄──► client robot ou sim (À ÉCRIRE)
+Fine-tuning WLA, VLM gelé ──► checkpoint ──► model_server ◄──► sim/wla_client.py ou téléop --policy-uri
  (examples/unifolm_wla/train_files/run_finetune_g1d.sh)
 ```
 
@@ -231,16 +241,14 @@ Fine-tuning WLA, VLM gelé ──► checkpoint ──► model_server ◄──
 - Les constantes de repère sont dans `g1d_wla/frames.py`, source unique partagée avec la sim.
 - **Pince** : la téléop enregistre déjà l'angle moteur Dex1, de 0 fermée à 5,4 ouverte. C'est l'unité de l'entraînement, donc aucune conversion n'est faite.
 
-Ce qu'il produit :
-
-Voir la section 10 de `docs/G1D_Constats.md`. Il doit produire :
+Ce qu'il produit, détail en section 10 de `docs/G1D_Constats.md` :
 
 - **Effecteur, état** : FK des angles **mesurés** dans la base WLA, avec l'effecteur WLA, en euler `xyz`.
 - **Effecteur, action** : FK des angles **commandés**, même repère.
 - **Jambes** : posture debout du G1, la constante `G1_STANDING_LEGS` de la sim.
 - **Taille** : `[0, 0, tangage du buste]`.
-- **Commande de base** : vitesses de la base, et hauteur de bassin équivalente à la colonne.
-- **Caméras** : `head_stereo_left` pour l'œil gauche brut, `head_stereo_left_rec` si on calibre la stéréo, `wrist_left` et `wrist_right`.
+- **Commande de base** : vitesses de la base enregistrées, et hauteur de bassin **constante**, `G1_BASE_HEIGHT` = 0,732 m ou `--base-height`. Elle ne dépend pas encore de la colonne.
+- **Caméras** : `head_stereo_left` pour l'œil gauche brut, `head_stereo_right`, `wrist_left` et `wrist_right`. Pour la sim, qui n'a qu'un œil, seulement `head_stereo_left` et les poignets. La disposition est déduite de l'en-tête. Pour la téléop `--right-only`, passer `--layout right-only`.
 - **Pince** : unité Dex1, copiée telle quelle.
 - **Normalisation** : statistiques précollectées du dépôt, clé `UnifoLM_G1_Dex1`. **Ne pas les recalculer.**
 
@@ -253,7 +261,7 @@ Voir la section 10 de `docs/G1D_Constats.md`. Il doit produire :
     --unnorm_key UnifoLM_G1_Dex1 --port 8600
 # 2. client, env de la sim ; sorties dans sim/wla_out/, hors git
 MUJOCO_GL=egl ~/miniconda3/envs/unitree_lerobot/bin/python sim/wla_client.py \
-    --instruction "pick up the black part and put it in the box" --chunks 10 --head-view raw
+    --instruction "pick up the black part and put it in the box" --episodes 1 --max-steps 300 --head-view raw
 ```
 
 - Le serveur occupe environ 11,6 Go de mémoire graphique.
@@ -333,7 +341,11 @@ Tâche plus dure que le cube : saisir la pièce Novares par la **prise peinte** 
 - **Prise** : lue dans les zones peintes de mpc_any, avec la même logique que `mpc_any/.../perception/zones_prise.py`. L'axe des mors passe entre les deux zones. On échantillonne 24 approches autour de cet axe, on rejette celles où la paume traverse la pièce, et on prend la plus verticale atteignable. La prise fait 52 mm de large, en approche verticale.
 - **Variance** : la pièce garde sa pose stable, avec ±3 cm en x et en y et ±20° de lacet à chaque épisode.
 - **Expert** : il monte la main, fait un transfert articulaire au-dessus de la pièce, puis descend. Il réussit 46 prises sur 50. L'enregistreur ne garde que les réussites propres : 50 démos gardées sur 54 essais.
-- **Fichiers non versionnés** : `sim/assets/meshes/_Novares_Piece1_centered.stl` et `.zones.json`, ce dernier copié de `mpc_any/configs/projects/usine/novares.zones.json`, même STL.
+- **Fichiers non versionnés**, tous dans `sim/assets/meshes/` :
+  - `_Novares_Piece1_centered.stl`, le maillage visuel ;
+  - les 90 `__Novares_Piece1_centered_partNN.stl`, sa décomposition convexe pour les collisions ;
+  - `_Novares_Piece1_centered.zones.json`, copié de `mpc_any/configs/projects/usine/novares.zones.json`, même STL ;
+  - `_Novares_Piece1_centered.stack.json`, le décalage d'emboîtement pour l'empilement.
 
 ```bash
 MUJOCO_GL=egl $SIMPY sim/record_sim_demos.py --task novares --n 50 --out playground/sim_raw/sim_novares
@@ -355,10 +367,13 @@ MUJOCO_GL=egl $SIMPY sim/wla_client.py --scene novares --instruction "pick up th
 | 50 | 10 pas + préfixe de 20 | 25 / 30 | 154 |
 | 25 | chunk entier | 22 / 30 | 146 |
 | 25 | 10 pas + préfixe de 20 | 21 / 30 | 151 |
-| 10 | — | à venir | |
+| 10 | chunk entier | **27 / 30** | 161 |
+| 10 | 10 pas + préfixe de 20 | 27 / 30 | 160 |
 
 - **Tâche plus dure** : elle s'apprend aussi bien que le cube. Avec 50 démos, le modèle réussit 9 fois sur 10, **à la vitesse de l'expert**.
-- **File automatique** : `playground/queue_novares.sh` enchaîne entraînement et évaluation pour 50, 25 puis 10 démos. Journal : `playground/queue_logs/queue.log`.
+- **Nombre de démos** : 10 démos font aussi bien que 50, à 27/30. Le creux à 25 démos, 22/30, est probablement du bruit : un seul entraînement par configuration, et 30 essais.
+- **Hors distribution** : le modèle à 10 démos généralise mal dans certaines zones décalées. Sur 15 essais : 30/30 à 4–7 cm plus loin, mais **7/15 à 4–7 cm à gauche**, 11/15 pièce tournée de 26 à 46°, et 14/15 à 5–8 cm à droite.
+- **File automatique** : `sim/experiments/queue_novares.sh`, dont une copie tourne dans `playground/`, hors git. Elle enchaîne entraînement et évaluation pour 50, 25 puis 10 démos. Journal : `playground/queue_logs/queue.log`.
 
 ### Fine-tuning
 
@@ -386,7 +401,7 @@ Référence complète : section 9 de `docs/G1D_Constats.md`.
 |---|---|
 | Images | 3 vues, dans l'ordre `head_left`, `cam_wrist_left`, `cam_wrist_right`. Œil **gauche** seulement. 640×480 à 30 fps, vues par le modèle en 320×448 |
 | Couleurs | le serveur attend du **BGR** |
-| Vue de tête | rectifiée pour la config Dex1 du dépôt, mais **75 %** des frames publiques n'ont que la brute |
+| Vue de tête | rectifiée pour la config Dex1 du dépôt, mais **75 %** des frames publiques n'ont que la brute. Nos données utilisent l'œil gauche **brut**, `head_stereo_left` |
 | Repère base | **bassin** du G1. Sur le G1-D, bassin virtuel sous le buste : translation (-0.004, 0, 0.044) puis tangage du buste |
 | Effecteur | `wrist_yaw_link` + 0.105 m le long de x, orientation du poignet. Vérifié exact par FK |
 | Actions bras | relatives à la pose **mesurée** au début du chunk, 30 pas à 30 Hz |
@@ -421,7 +436,7 @@ Référence complète : section 9 de `docs/G1D_Constats.md`.
 | Correspondance pince sim ou robot ↔ unité Dex1 WLA | Mesurer les valeurs ouverte et fermée des deux côtés |
 | Hauteur exacte de la table dans les datasets G1 | Plan de table par la caméra calibrée |
 | Le G1-D peut-il manipuler buste penché d'environ 0.166 rad ? | Tester sur le robot |
-| Lequel des indices 12 ou 13 de `body.qpos` est le tangage du buste ? Tous deux valent environ 0,09 rad dans `mon_test` | Incliner le buste sur le robot et regarder lequel bouge |
+| Lequel des moteurs de `body.qpos` est le tangage du buste du G1-D ? Dans l'énumération G1_29 de la téléop, 12 = lacet, 13 = roulis et 14 = tangage de la taille. Dans `mon_test`, 12 et 13 valent environ 0,09 rad, et 14 vaut 0. Toute la chaîne utilise 13 par cohérence | Incliner le buste sur le robot et regarder lequel bouge |
 
 ---
 

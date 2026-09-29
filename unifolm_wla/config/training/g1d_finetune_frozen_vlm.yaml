@@ -52,8 +52,8 @@ framework:
 datasets:
   vla_data:
     dataset_py: multi_source_datasets
-    # Overridden at launch to the --data_config_path passed to
-    # run_finetune_mmdit_frozen_vlm.sh (default: unitree.yaml).
+    # Default dataset; override with --datasets.vla_data.data_config_path
+    # (run_finetune_g1d.sh does not change it).
     data_config_path: unifolm_wla/dataloader/multi_source_dataset/configs/g1d.yaml
     per_device_batch_size: 1
     num_workers: 2

@@ -10,12 +10,20 @@ sim/
 ├── assets/
 │   ├── scene_g1d.xml      # copie de mpc_any/sim/assets/g1_d_description/scene_g1d.xml
 │   ├── g1_d_dex1.urdf     # le robot (Pinocchio : FK/IK + gravité)
-│   └── meshes/            # les 197 meshes RÉFÉRENCÉS (20 Mo au lieu de 66)
+│   ├── scene_g1d_cube.xml # scène cube (repli si les fichiers Novares sont absents)
+│   ├── scene_g1d_stack.xml# scène empilement Novares
+│   └── meshes/            # meshes référencés ; 106 versionnés (robot), ceux de Novares hors git
 ├── g1d_sim/
 │   ├── robot.py           # G1DSim : physique, bras, pinces, caméras, save/restore
 │   ├── kinematics.py      # ArmKinematics (Pinocchio, DLS) — mêmes constantes que mpc_any
 │   └── camera.py          # SimCamera (RGB seulement)
-└── smoke.py               # 22 vérifications + les 3 vues en PNG dans smoke_out/
+├── smoke.py               # 22 vérifications + les 3 vues en PNG dans smoke_out/
+├── sim_tasks.py           # registre des tâches (cube, novares, zones décalées)
+├── cube_task.py, novares_task.py, stack_task.py   # tâches + experts scriptés
+├── record_sim_demos.py, sim_episode_writer.py     # démos au format xr_teleoperate
+├── wla_client.py          # client du serveur WLA (évaluation en boucle fermée)
+├── recap_rollouts.py      # rollouts RECAP avec opérateur simulé
+└── experiments/           # files de travaux (queue_novares.sh, queue_recap.sh)
 ```
 
 ## Lancer
@@ -98,6 +106,6 @@ snap = sim.save_state()        # restore_state(snap)
 
 ## Ce qui reste hypothétique (repris de mpc_any)
 
-* Le montage de la Dex1 sur le poignet (`ATTACH` / `ATTACH_RPY` dans `make_g1d_dex1.py`)
+* Le montage de la Dex1 sur le poignet (`ATTACH` / `ATTACH_RPY` dans le script `make_g1d_dex1.py` de mpc_any, non repris ici)
   n'a pas été vérifié sur le vrai robot.
 * Les poses des caméras et de la table sont des valeurs plausibles, pas des mesures.

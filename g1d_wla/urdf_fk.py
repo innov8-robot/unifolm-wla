@@ -1,7 +1,7 @@
 """Cinématique directe torso_link -> *_wrist_yaw_link du G1-D, lue dans l'URDF (numpy seul).
 
 La chaîne du bras part de ``torso_link`` : elle ne dépend ni de la colonne ni du tangage du buste,
-qui n'interviennent que dans ``base_T_torso``. Validée contre pinocchio (voir ``sim/smoke.py``).
+qui n'interviennent que dans ``base_T_torso``. Validée contre pinocchio lors du développement (ce contrôle n'est pas dans ``sim/smoke.py``).
 """
 from __future__ import annotations
 

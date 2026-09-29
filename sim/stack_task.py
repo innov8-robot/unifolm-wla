@@ -42,7 +42,7 @@ class StackParams(N.NovaresParams):
     place_clear: float = 0.02   # lâcher 2 cm au-dessus de la pose emboîtée : plus bas, les doigts
                                 # qui tiennent les bouts de la paroi descendent dans la pièce du
                                 # dessous et la poussent (mesuré) ; l'emboîtement tolère un lâcher
-                                # de 1 à 3 cm avec ±4 mm / ±5° d'erreur
+                                # de 1 à 3 cm avec ±3 mm d'erreur (mesuré)
     t_carry: int = 50
     t_place: int = 30
     t_open: int = 15

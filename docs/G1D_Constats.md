@@ -8,7 +8,7 @@ Mêmes niveaux de confiance que le briefing :
 - **[INFÉRÉ]** — déduction cohérente, à valider.
 - **[INCONNU]** — question ouverte.
 
-Sauf mention contraire, tous les constats viennent d'une **lecture statique du code**. Rien n'a encore été exécuté, ni sur données réelles ni sur le robot.
+Sauf mention contraire, tous les constats viennent d'une **lecture statique du code**. Les sections 12 à 15 rapportent des essais **exécutés en sim**. Rien n'a encore été exécuté sur le robot.
 
 Dernière mise à jour : 29 septembre 2026, sur la base du commit `406faa3` d'Unitree, qui inclut la PR #14 sur le LoRA.
 
@@ -37,7 +37,7 @@ Cela tranche les questions 1 et 6 du briefing. Le Dex1 est l'effecteur nominal d
 - La fonction de gel parcourt tous les paramètres du module et les met à `requires_grad = False`, dans [trainer_tools.py](../unifolm_wla/training/trainer_utils/trainer_tools.py#L188-L231). Le gel s'applique après l'attachement du projecteur.
 - **Seule la tête DiT s'entraîne.** Le commentaire du YAML, qui dit le contraire, est erroné.
 
-**Contournement [INFÉRÉ, non testé]** : geler le VLM par sous-modules au lieu de le geler en bloc.
+**Contournement [VÉRIFIÉ]** : geler le VLM par sous-modules au lieu de le geler en bloc. Appliqué dans `g1d_finetune_frozen_vlm.yaml` : 6,87 M paramètres entraînables, projecteur compris.
 
 ```yaml
 trainer:
@@ -55,7 +55,7 @@ Un vrai lancement confirme 1 397,3 M paramètres entraînables. La recette G1-D 
 
 **[VÉRIFIÉ]** Ni la recette officielle ni la nôtre ne tiennent sur une RTX 5090 Laptop, qui offre 23,4 Go utilisables. Les deux saturent au premier passage arrière. Avec l'optimiseur déporté en mémoire vive, la nôtre tourne à environ 1,7 s par pas. Le commentaire officiel parle pourtant d'« un seul GPU de 24 Go ».
 
-**À corriger avant tout fine-tuning G1-D.**
+**Corrigé pour nos fine-tunings G1-D** (voir le contournement ci-dessus).
 
 ### Le fine-tuning LoRA ne change rien
 
@@ -172,7 +172,7 @@ Les minimums et maximums bruts contiennent des valeurs aberrantes, jusqu'à ±11
 
 Les images sont redimensionnées en 336×448 (hauteur × largeur). Source : [unitree.yaml](../unifolm_wla/dataloader/multi_source_dataset/configs/unitree.yaml).
 
-**[INFÉRÉ]** La tête est bien une caméra stéréo, ce qui correspond à la binoculaire du G1-D. Il faudra fournir la vue gauche **rectifiée**.
+**[INFÉRÉ]** La tête est bien une caméra stéréo, ce qui correspond à la binoculaire du G1-D. Nos données et la sim envoient l'œil gauche **brut** sous `head_stereo_left` (voir la section 9) ; la vue rectifiée n'est utile que si on calibre la stéréo.
 
 **[INCONNU]** Résolution native, champ de vision et intrinsèques des caméras de collecte. À lire dans les métadonnées d'un épisode Dex1 téléchargé, puis à comparer à nos caméras.
 
@@ -197,7 +197,7 @@ Les images sont redimensionnées en 336×448 (hauteur × largeur). Source : [uni
 
 ```
 MUJOCO_GL=egl python sim/smoke.py    # depuis la racine du dépôt
-15/15 vérifications passées
+22/22 vérifications passées
 ```
 
 Tenue sous gravité, IK aller-retour, pose de travail, suivi cartésien à 30 Hz, refus d'une cible hors d'atteinte, pinces, sauvegarde et restauration d'état et rendu des trois caméras fonctionnent.
@@ -254,26 +254,18 @@ Ce qui a été fait dans la sim :
 | Bord de table | plus loin du robot que dans les données |
 | Rendu | matériaux, éclairage et décor différents des images réelles |
 
-### Prochaine étape proposée
+### Suite
 
-Écrire un client sim qui joue le rôle du robot pour le serveur WLA :
-
-1. rendre les trois vues et lire les poses effecteur et les pinces ;
-2. les exprimer dans `B` et les envoyer au serveur ;
-3. appliquer le chunk reçu avec `track_tcp` et `set_gripper`, pas à pas à 30 Hz.
-
-Cela permet un test zero-shot en boucle fermée sans robot, dès que les poids sont téléchargés.
-
----
+**[FAIT]** Le client sim `sim/wla_client.py` joue le rôle du robot pour le serveur WLA : il rend les vues, exprime les poses dans `B` et applique le chunk avec `track_ee_wla` et `set_gripper` à 30 Hz. Résultats aux sections 12 à 14.
 
 ## 8. État des questions ouvertes du briefing
 
 | # | Question | État |
 |---|---|---|
 | 1 | Effecteur | **Résolu** : Dex1 interne. |
-| 2 | Format de nos données de téléop | Ouvert. |
+| 2 | Format de nos données de téléop | **Résolu** : `g1d_wla/convert_teleop.py` convertit le JSON xr_teleoperate en LeRobot v3 au format WLA. |
 | 3 | 120D = état ⊕ masque ? | **Résolu** : oui, voir la section 3. |
-| 4 | Caméra du rig de collecte | **Résolu** : tête stéréo, vue gauche rectifiée, et deux poignets. Intrinsèques estimées. |
+| 4 | Caméra du rig de collecte | **Résolu** : tête stéréo et deux poignets. Nous utilisons l'œil gauche brut. Intrinsèques estimées. |
 | 5 | Repère base du G1-D | **Résolu** : bassin virtuel, voir la section 9. |
 | 6 | Base fixe ou roulante | **Résolu** : roulante, pilotable par la commande de base, voir la section 5. |
 
@@ -390,7 +382,7 @@ La ligne « LOW BODY » vient du type de bras `dual_with_legs` du Dex1. Le serve
 
 - **Jambes** : slots **valides** à l'entraînement Dex1, avec le G1 debout. Il faut envoyer la posture debout du G1, par exemple hanche en tangage -0.41 rad et genou 0.65 rad. Le détail est dans `G1_STANDING_LEGS` de la sim. Le briefing supposait ces slots masqués : c'est faux pour les données Dex1.
 - **Taille** : slot valide. Envoyer [lacet 0, roulis 0, tangage du buste G1-D]. Chez le G1, le tangage de la taille est égal au tangage du buste.
-- **Pince** : unité Dex1 brute. La valeur **monte à l'ouverture** : environ 4,5 ouverte au repos, environ 2,4 fermée sur un cube de 4 cm, plage totale de 0 à 5,5. La correspondance avec la position des doigts de la sim reste à calibrer.
+- **Pince** : unité Dex1 brute. La valeur **monte à l'ouverture** : environ 4,5 ouverte au repos, environ 2,4 fermée sur un cube de 4 cm, plage totale de 0 (fermée) à 5,4 (ouverte), valeurs utilisées par le code. La correspondance avec la position des doigts de la sim reste à calibrer.
 - **Clé de normalisation** : `UnifoLM_G1_Dex1`.
 
 ### Actions
@@ -414,8 +406,8 @@ Constats du 29 septembre 2026, tirés du code de `xr_teleoperate` et de `unitree
 ### Ce que fait xr_teleoperate
 
 - **[VÉRIFIÉ]** C'est l'outil de téléopération et d'enregistrement d'Unitree, avec un casque XR comme le Vision Pro ou le PICO 4.
-- **[VÉRIFIÉ]** Il connaît les Dex1 câblées en interne : `--ee dex1_internal`, qui pilote les pinces par les moteurs 31 et 33 de la commande bas niveau du G1.
-- **[VÉRIFIÉ]** `dex1_internal` exige `--arm G1_29` et interdit `--motion`.
+- **[VÉRIFIÉ]** Il connaît les Dex1 câblées en interne : `--ee dex1`, qui pilote les pinces par les moteurs 31 et 33 de la commande bas niveau du G1.
+- **[VÉRIFIÉ]** `dex1` exige `--arm G1_29` et interdit `--motion`.
 - **[VÉRIFIÉ]** Aucun `--arm` ne correspond au G1-D. Le code ne mentionne ni roues, ni colonne, ni G1-D.
 - **[INCONNU]** Le G1-D accepte-t-il la commande bas niveau du G1 29 DoF, avec 35 moteurs sur `rt/lowcmd` ? **À vérifier avant tout essai**, bras dégagés et gains faibles. Une mauvaise correspondance des indices moteurs commanderait les mauvais joints.
 
@@ -427,7 +419,7 @@ Pour chaque pas, à 30 Hz par défaut :
 - **État** : angles **mesurés** des deux bras et position des pinces.
 - **Action** : angles **commandés** des bras, sortie de l'IK, et commande des pinces.
 
-Il n'enregistre **pas** les poses effecteur, la pose du buste, la pose caméra, les jambes ni la commande de base.
+Il n'enregistre **pas** les poses effecteur, la pose du buste ni la pose caméra. Notre fork ajoute `body.qpos` (les 35 moteurs, jambes et buste compris) et la commande de base issue des joysticks.
 
 ### Ce que produit unitree_lerobot
 
@@ -439,9 +431,9 @@ Il n'enregistre **pas** les poses effecteur, la pose du buste, la pose caméra, 
 1. **Images** : teleimager, avec la tête binoculaire et les deux poignets, à 640×480 par vue.
 2. **Téléopération** : si le G1-D est compatible, lancer :
    ```
-   python teleop_hand_and_arm.py --arm=G1_29 --ee=dex1_internal --record --frequency 30 --task-name <nom> --task-goal "<instruction>"
+   python teleop_hand_and_arm.py --arm=G1_29 --ee=dex1 --record --frequency 30 --task-name <nom> --task-goal "<instruction>"
    ```
-3. **Conversion** : un convertisseur maison, JSON → LeRobot v3 au format WLA, **à écrire** :
+3. **Conversion** : un convertisseur maison, JSON → LeRobot v3 au format WLA, **écrit** dans `g1d_wla/convert_teleop.py` :
    - effecteur état = FK des angles mesurés, effecteur action = FK des angles commandés, dans la base WLA et avec l'effecteur WLA de la section 9 ;
    - euler `xyz` pour l'enregistrement ;
    - jambes G1 debout, taille à [0, 0, tangage du buste], commande de base, poses buste et d435 ;
@@ -618,7 +610,7 @@ Le préfixe rend la replanification fréquente utilisable : à 10 pas par chunk,
 | 50 | chunk entier | 27 / 30 | 149 |
 | 50 | 10 pas + préfixe de 20 | 25 / 30 | 154 |
 
-La pièce Novares, avec sa prise verticale peinte et sa variance de ±3 cm et ±20°, s'apprend aussi bien que le cube. Le modèle atteint la **vitesse de l'expert**. Pour le cube, il restait environ 20 % plus lent, à 151 pas contre 127. Les résultats à 25 et 10 démos sont en cours.
+La pièce Novares, avec sa prise verticale peinte et sa variance de ±3 cm et ±20°, s'apprend aussi bien que le cube. Le modèle atteint la **vitesse de l'expert**. Pour le cube, il restait environ 20 % plus lent, à 151 pas contre 127. Résultats à 25 démos : 22 / 30 en 146 pas ; à 10 démos : 27 / 30 en 161 pas (voir le tableau de MYREADME.md).
 
 ### Empilement de deux pièces
 
@@ -672,11 +664,11 @@ Principe publié par Physical Intelligence, π*0.6 avec RECAP, fin 2025, et repr
 | Modèle de valeur et étiquetage | `g1d_wla/recap.py` | ResNet18 gelé sur la tête et le poignet droit, plus l'état, puis un MLP qui prédit les pas restants avant la réussite ; un échec vaut le maximum. Un morceau de 30 pas est positif s'il gagne au moins 0,5 × 30 pas restants. Les corrections sont toujours positives |
 | Conversion | `g1d_wla/convert_teleop.py` | Colonnes `advantage` et `intervention`. Les pas non étiquetés, comme les démos, valent 1 |
 | Écriture d'épisode | `sim/sim_episode_writer.py` | Partagé par les démos et les rollouts. `info.success_step` et `info.outcome` sont ajoutés |
-| Tâche de test | `sim/sim_tasks.py`, tâche `novares_shift` | Pièce 4 à 7 cm plus loin que la zone d'entraînement : c'est l'équivalent de la « cuisine inversée » de Delta-0 |
+| Tâche de test | `sim/sim_tasks.py`, tâche `novares_left` | Pièce 4 à 7 cm à gauche de la zone d'entraînement : c'est l'équivalent de la « cuisine inversée » de Delta-0. La zone « plus loin » (`novares_shift`) a été écartée : le modèle à 10 démos y réussit déjà 30 / 30, contre 7 / 15 à gauche |
 
 ### Expérience préparée
 
-`sim/experiments/queue_recap.sh` enchaîne ces étapes, et démarre seule après la file Novares :
+`sim/experiments/queue_recap.sh` enchaîne ces étapes (lancée le 29 septembre à 23 h 07) :
 1. **Référence** : la politique à 10 démos, évaluée dans la zone décalée et dans la zone d'origine.
 2. **Rollouts** : 40 épisodes dans la zone décalée, avec l'opérateur simulé.
 3. **Modèle de valeur et étiquetage.**
@@ -702,3 +694,10 @@ La comparaison entre les étapes 5 et 6 dira si le gain vient du conditionnement
 - la taille du jeu de rollouts ;
 - le nombre d'itérations.
 
+
+### Corrections de l'audit (29 septembre 2026)
+
+- **Modèle de valeur** : horizon porté de 300 à 500 pas ; validation croisée à 5 plis, chaque épisode étant noté par un modèle qui ne l'a pas vu ; étiquette par pas sur la fenêtre [t, t+30).
+- **Rollouts** : l'issue se juge après 20 pas de tenue ; une prise qui lâche compte comme un échec.
+- **File** : cache Arrow vidé avant chaque entraînement, seuil disque ramené à 13 Go.
+- **Téléop, mode politique** : la pince ne suit plus la gâchette brute ; la correction est rebasée à chaque chunk ; la borne de vitesse part de la pose mesurée ; une panne du serveur tient les bras au lieu de les renvoyer au repos ; les pas tenus ne sont pas enregistrés ; un essai terminé sans `X`/`Y` est noté `unknown` et ignoré par l'étiquetage. Tests hors robot dans `teleop/test_policy_bridge.py`.
