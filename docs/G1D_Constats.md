@@ -512,5 +512,73 @@ Le modèle apprend une nouvelle tâche à partir de 150 démos au format que pro
 
 **Ce que ça ne valide pas** : le passage au réel. Le rendu de sim est loin des vraies images, et l'expert est parfaitement régulier.
 
-**[INFÉRÉ]** Le modèle exécute la séquence environ 1,5 fois plus lentement que l'expert. Deux pistes : n'exécuter que 20 des 30 pas de chaque chunk, et trop peu de pas d'entraînement. À tester : exécuter les chunks entiers, et entraîner plus longtemps.
+**[CORRIGÉ, voir la section 13]** La lenteur venait surtout de l'exécution partielle des chunks, pas du modèle.
+
+---
+
+## 13. Vitesse d'exécution et nombre de démos (29 septembre 2026)
+
+Même tâche cube et mêmes 30 positions d'évaluation que la section 12. Nouvelles mesures :
+
+- **Temps de réussite** : le pas où le cube dépasse 5 cm de levée pour la première fois. L'expert scripté réussit en **127 pas** en médiane.
+- **Critère de réussite** : le cube a été levé de plus de 5 cm **et** l'est encore à la fin.
+
+### La lenteur venait de l'exécution partielle des chunks
+
+**[VÉRIFIÉ]** Hors boucle, sur 60 extraits du dataset, le modèle à 150 démos prédit des mouvements de la **bonne amplitude** : le rapport entre prédiction et expert à t+29 vaut 1,02 à 1,04, avec une erreur de position médiane de 0,4 cm. Le modèle n'est donc pas lent en soi.
+
+**[VÉRIFIÉ]** En boucle fermée, c'est le nombre de pas exécutés par chunk qui compte :
+
+| Pas exécutés par chunk | Réussites | Pas médian jusqu'à la réussite |
+|---|---|---|
+| 30, chunk entier | **28 / 30** | 151 |
+| 20 | 24 / 30 | 222 |
+| 10 | 8 / 30 | 266 |
+
+**[INFÉRÉ]** Chaque nouveau chunk repart de la pose mesurée, qui traîne légèrement derrière la commande à cause du suivi des servos. Chaque chunk recommence aussi une accélération depuis l'arrêt, comme l'expert au début de chaque phase. Plus on replanifie souvent, plus on perd de temps.
+
+### Real-time chunking par inpainting
+
+**[VÉRIFIÉ]** Nous avons ajouté un préfixe optionnel à l'échantillonnage flow matching de la tête d'action. On l'impose par inpainting à chaque pas d'intégration. Aucun réentraînement n'est nécessaire.
+
+- **Préfixe** : le serveur garde le chunk précédent en poses absolues, et ré-exprime sa suite dans le repère de la nouvelle ancre mesurée.
+- **Réinitialisation** : `policy_reset` vide cette mémoire.
+- **Comportement par défaut** : sans préfixe, rien ne change.
+- **Code** : `MMDiT_ActionHeader.predict_action`, `ActionServerWBCMsgpack._rtc_prefix`, et l'option `--rtc-prefix` de `sim/wla_client.py`.
+
+| Modèle | Réglage | Réussites | Pas médian |
+|---|---|---|---|
+| 150 démos | 10 pas, sans préfixe | 8 / 30 | 266 |
+| 150 démos | 20 pas + préfixe de 10 | 20 / 30 | 172 |
+| 150 démos | 15 pas + préfixe de 15 | 24 / 30 | 160 |
+| 150 démos | 10 pas + préfixe de 20 | 23 / 30 | **148** |
+
+Le préfixe rend la replanification fréquente utilisable : à 10 pas par chunk, on passe de 8 à 23 réussites. C'est le réglage le plus rapide, mais il n'égale pas la fiabilité des chunks entiers.
+
+### Nombre de démos
+
+**[VÉRIFIÉ]** Même recette, 3 000 pas d'entraînement, sur les 25 premières démos seulement :
+
+| Démos | Réglage | Réussites | Pas médian |
+|---|---|---|---|
+| 150 | chunk entier | 28 / 30 | 151 |
+| **25** | chunk entier | **30 / 30** | 173 |
+| 150 | 10 pas + préfixe de 20 | 23 / 30 | 148 |
+| 25 | 10 pas + préfixe de 20 | 20 / 30 | 146 |
+
+- **Données** : pour cette tâche, **25 démos suffisent**, et font aussi bien que 150.
+- **Vitesse** : avec 25 démos, le modèle est un peu plus lent en chunks entiers, 173 pas contre 151.
+- **Perte** : elle descend plus bas avec 25 démos, jusqu'à 0,0003, ce qui est cohérent avec un jeu plus petit, mieux mémorisé.
+- **Test à 10 démos** : en cours au moment de la rédaction, mené par une autre session.
+
+### Limites
+
+- **Tâche simple** : une seule tâche, une seule main, une zone de 10 × 14 cm, un expert scripté parfaitement régulier. Des démos humaines en téléop seront plus variées et plus bruitées. Il en faudra probablement plus.
+- **Échantillons** : un seul entraînement par configuration et 30 essais par évaluation. Des écarts de 2 ou 3 réussites ne sont pas significatifs.
+- **Réel** : aucun de ces résultats ne vaut encore pour le robot, à cause de l'écart visuel entre sim et réel.
+
+### Recommandations pour le vrai robot
+
+- **Point de départ** : chunks entiers, `--exec-steps 30` sans préfixe, pour la fiabilité. Passer à 10 pas + préfixe de 20 si la réactivité ou la vitesse comptent plus.
+- **Nombre de démos** : viser **25 à 50 démos** pour une première tâche plutôt que 200, puis ajuster selon le taux de réussite. Le briefing prévoyait 50 à 200.
 

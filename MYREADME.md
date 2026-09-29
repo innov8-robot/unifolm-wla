@@ -56,6 +56,7 @@ Par ordre de priorité. Cocher au fur et à mesure.
   - [ ] si possible, la calibration de la stéréo de tête.
 - [ ] **Installer le poste de démo** : une table à environ 0,87 m et le buste penché d'environ 0.166 rad.
 - [x] **Valider la chaîne complète en sim** : 150 démos expertes de la tâche cube, fine-tuning de 3 000 pas, puis **23 prises sur 30** positions jamais vues. Le zero-shot faisait 0 sur 20. Voir « Validation en sim » plus bas.
+- [x] **Améliorer la vitesse et réduire le nombre de démos, en sim** : chunks entiers, 28/30 en 151 pas au lieu de 222. Real-time chunking ajouté, 148 pas avec replanification tous les 10 pas. **25 démos suffisent**, 30/30. Test à 10 démos en cours.
 - [ ] **Enregistrer, puis fine-tuner** : la recette est prête et testée sur `mon_test`. Elle tourne à environ 1,7 s par pas sur la RTX 5090. Le correctif du projecteur gelé est **vérifié** : 1 397 M paramètres entraînables, soit la tête DiT plus les 6,87 M du projecteur. Reste à enregistrer de vraies démos iso, voir les points précédents.
 
 ---
@@ -286,9 +287,34 @@ MUJOCO_GL=egl $SIMPY sim/wla_client.py --scene cube --instruction "pick up the r
 | Fine-tuné, 3 000 pas | 300 | **23 / 30** |
 
 - **Mêmes positions** : les 30 positions de cube sont identiques d'une ligne à l'autre, et aucune n'a été vue à l'entraînement.
-- **Lenteur** : le modèle enchaîne correctement pré-saisie, descente, fermeture et montée, mais environ 1,5 fois plus lentement que l'expert, qui fait la tâche en 158 pas. D'où l'écart entre 200 et 300 pas.
+- **Lenteur** : elle venait de l'exécution de 20 pas sur 30 par chunk, pas du modèle. Voir « Vitesse et nombre de démos » juste en dessous.
 - **Perte** : environ 0,027 au pas 100, 0,004 au pas 1 000, et entre 0,002 et 0,01 à la fin.
 - **Échecs** : une partie ont lieu dans le fond de la zone, en y très négatif.
+
+### Vitesse et nombre de démos
+
+Détail et analyse : section 13 de `docs/G1D_Constats.md`. L'expert scripté réussit en 127 pas.
+
+| Démos | Réglage d'exécution | Réussites | Pas médian jusqu'à la réussite |
+|---|---|---|---|
+| 150 | 10 pas par chunk | 8 / 30 | 266 |
+| 150 | 20 pas par chunk | 24 / 30 | 222 |
+| 150 | chunk entier, 30 pas | 28 / 30 | 151 |
+| 150 | 10 pas + préfixe de 20 | 23 / 30 | **148** |
+| **25** | chunk entier | **30 / 30** | 173 |
+| 25 | 10 pas + préfixe de 20 | 20 / 30 | 146 |
+
+- **Vitesse** : exécuter les chunks en entier est le plus simple et le plus fiable. Replanifier souvent ralentit le robot, sauf avec le **préfixe de real-time chunking**, que nous avons ajouté au serveur et à la tête d'action. C'est le réglage le plus rapide, mais un peu moins fiable.
+- **Nombre de démos** : **25 démos suffisent** pour cette tâche en sim, aussi bien que 150. Un test à 10 démos est en cours.
+- **Pour le vrai robot** : commencer par des chunks entiers et viser 25 à 50 démos pour une première tâche.
+
+```bash
+# chunks entiers (fiable)
+MUJOCO_GL=egl $SIMPY sim/wla_client.py --scene cube --instruction "pick up the red cube" \
+    --head-view raw --episodes 30 --max-steps 300 --exec-steps 30 --stop-on-success
+# replanification rapide avec préfixe (plus réactif)
+... --exec-steps 10 --rtc-prefix 20
+```
 
 ### Fine-tuning
 
