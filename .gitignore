@@ -294,3 +294,5 @@ teleoperation/**/=1.21
 
 # Sorties du client de test WLA (vidéos, journaux)
 sim/wla_out/
+# Variante DeepSpeed G1-D (le dossier deepseeds/ est ignoré par Unitree)
+!unifolm_wla/config/deepseeds/deepspeed_zero2_offload.yaml

@@ -1,0 +1,10 @@
+# Variante G1-D : ZeRO-2 avec états de l'optimiseur en mémoire vive (GPU de 24 Go).
+compute_environment: LOCAL_MACHINE
+debug: false
+deepspeed_config:
+  deepspeed_config_file: "./unifolm_wla/config/deepseeds/ds_config_debug_cpu_offload.yaml"
+  deepspeed_multinode_launcher: standard
+  zero3_init_flag: false
+distributed_type: DEEPSPEED
+num_machines: 1
+num_processes: 8

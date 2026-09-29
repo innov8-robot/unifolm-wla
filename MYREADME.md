@@ -35,8 +35,8 @@ Ce fork adapte **UnifoLM-WLA-1.0** d'Unitree au **G1-D** : robot sur base roulan
 | Convertisseur d'enregistrements → format WLA | **Fait**, deux hypothèses à valider |
 | Client sim ↔ serveur WLA, test zero-shot | **Fait** en sim, pas de prise réussie |
 | Poids UnifoLM-WLA-1.0-Base téléchargés | **Fait** |
-| Correction du gel du robot-state projector pour le fine-tuning | **À tester** |
-| Fine-tuning sur nos démos | Pas commencé |
+| Correction du gel du robot-state projector pour le fine-tuning | **Fait et vérifié** |
+| Fine-tuning sur nos démos | Recette prête, testée 5 pas sur `mon_test` |
 | Push de `g1d-port` sur GitHub | **Fait**, à refaire après chaque étape |
 
 ### TODO
@@ -54,7 +54,7 @@ Par ordre de priorité. Cocher au fur et à mesure.
   - [ ] la hauteur de colonne, à ajouter à l'enregistrement ;
   - [ ] si possible, la calibration de la stéréo de tête.
 - [ ] **Installer le poste de démo** : une table à environ 0,87 m et le buste penché d'environ 0.166 rad.
-- [ ] **Enregistrer, puis fine-tuner** : il faudra vérifier au lancement que le correctif du projecteur gelé fonctionne.
+- [ ] **Enregistrer, puis fine-tuner** : la recette est prête et testée sur `mon_test`. Elle tourne à environ 1,7 s par pas sur la RTX 5090. Le correctif du projecteur gelé est **vérifié** : 1 397 M paramètres entraînables, soit la tête DiT plus les 6,87 M du projecteur. Reste à enregistrer de vraies démos iso, voir les points précédents.
 
 ---
 
@@ -257,18 +257,20 @@ MUJOCO_GL=egl ~/miniconda3/envs/unitree_lerobot/bin/python sim/wla_client.py \
 ### Fine-tuning
 
 ```bash
-base_model_dir=playground/Pretrained_models/UnifoLM-WLA-1.0-Base \
-bash examples/unifolm_wla/train_files/run_finetune_mmdit_frozen_vlm.sh
+# 1. convertir les démos sous playground/Datasets/g1d/<tâche>/ (voir plus haut)
+# 2. lancer, run_id au choix ; toute surcharge --clé valeur est transmise
+run_id=g1d_pick_v1 bash examples/unifolm_wla/train_files/run_finetune_g1d.sh
+# essai court : ... --trainer.max_train_steps 5 --trainer.save_interval 100000
 ```
 
-⚠ La recette officielle gèle aussi le **robot-state projector**. C'est pourtant notre adaptateur d'embodiment. La piste de correction, non testée, est dans la section 2 de `docs/G1D_Constats.md` :
+Ce que la recette G1-D change par rapport à la recette officielle :
 
-```yaml
-trainer:
-  freeze_modules: "qwen_vl_interface.model.model,qwen_vl_interface.model.lm_head"
-```
-
----
+- **Config** : `unifolm_wla/config/training/g1d_finetune_frozen_vlm.yaml`.
+- **Gel du VLM par sous-modules** : le robot-state projector s'entraîne. Vérifié sur un vrai lancement : 1 397 M paramètres entraînables, soit la tête DiT plus les 6,87 M du projecteur.
+- **Optimiseur déporté en mémoire vive**, par `deepspeed_zero2_offload.yaml` : sans ça, ni cette recette ni l'officielle ne tiennent sur les 23,4 Go de la RTX 5090 Laptop.
+- **Données** : `configs/g1d.yaml`. Les normaliseurs sauvegardés avec le checkpoint sont identiques au bit près à ceux du modèle Base.
+- **Compilation de DeepSpeed** : le script lui présente les bibliothèques CUDA 12 de l'env, dans `playground/cuda12_shim`, car le CUDA système est une version 13. Il faut aussi ninja, déjà présent dans l'env.
+- **Coût** : environ 1,7 s par pas, lot de 1, et environ 12 Go de disque par checkpoint sauvegardé.
 
 ## 7. Contrat iso WLA, l'essentiel
 
