@@ -140,7 +140,7 @@ async def run(args) -> dict:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     task = None
-    if args.scene in ("cube", "novares", "novares_shift"):
+    if args.scene != "piece":
         from sim_tasks import get_task
         task = get_task(args.scene)
     cube = task is not None                    # tâche avec objet à soulever et réussite mesurée
@@ -194,7 +194,7 @@ def main() -> None:
     ap.add_argument("--instruction", default="pick up the black part and put it in the box")
     ap.add_argument("--unnorm_key", default="UnifoLM_G1_Dex1")
     ap.add_argument("--head-view", dest="head_view", choices=["rec", "raw"], default="rec")
-    ap.add_argument("--scene", choices=["piece", "cube", "novares", "novares_shift"], default="piece",
+    ap.add_argument("--scene", default="piece",
                     help="piece : scène d'origine sans mesure ; cube / novares : tâches avec placement "
                          "aléatoire et taux de réussite (novares : pièce non versionnée)")
     ap.add_argument("--episodes", type=int, default=1)

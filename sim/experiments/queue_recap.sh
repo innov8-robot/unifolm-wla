@@ -4,7 +4,8 @@
 #
 #  0. démos : 10 démos Novares ré-enregistrées (même graine que le jeu n10 -> mêmes épisodes) avec
 #     le pas de réussite, pour le modèle de valeur ;
-#  1. référence : politique n10 (file Novares) évaluée dans la zone décalée ;
+#  1. référence : politique n10 (file Novares) évaluée dans la zone décalée (4–7 cm à gauche :
+#     7/15 seulement, alors que 4–7 cm plus loin donnait déjà 30/30 et ne laissait rien à gagner) ;
 #  2. rollouts : la politique n10 joue 40 épisodes dans la zone décalée, opérateur simulé ;
 #  3. modèle de valeur (démos + rollouts), étiquetage de l'avantage par morceau de 30 pas ;
 #  4. fine-tuning conditionné par l'avantage (démos + rollouts), depuis le modèle Base ;
@@ -95,11 +96,11 @@ tail -1 "$LOGS/recap_demos.log" | sed 's|^|    |'
 
 say "1. référence : politique n10, zone décalée et zone d'origine"
 serve "$BASE_CKPT" base
-evaluate novares_shift n10_shift
+evaluate novares_left n10_left
 evaluate novares n10_origin
 
 say "2. rollouts de la politique n10 dans la zone décalée, opérateur simulé"
-MUJOCO_GL=egl $SIMPY sim/recap_rollouts.py --task novares_shift --episodes 40 --seed 2000 \
+MUJOCO_GL=egl $SIMPY sim/recap_rollouts.py --task novares_left --episodes 40 --seed 2000 \
     --out $RAW/recap_rollouts_r1 --overwrite > "$LOGS/recap_rollouts.log" 2>&1 || { say "ÉCHEC rollouts"; exit 1; }
 tail -1 "$LOGS/recap_rollouts.log" | sed 's|^|    |'
 unserve
@@ -126,14 +127,14 @@ train g1d_recap_r1 g1d_recap_r1.yaml
 
 say "5. évaluation du modèle RECAP"
 serve playground/Checkpoints/g1d_recap_r1/final_model/model.safetensors recap --advantage positive
-evaluate novares_shift r1_shift --advantage positive
+evaluate novares_left r1_left --advantage positive
 evaluate novares r1_origin --advantage positive
 unserve
 
 say "6. témoin : mêmes données, sans conditionnement"
 train g1d_recap_r1_noadv g1d_recap_r1_noadv.yaml
 serve playground/Checkpoints/g1d_recap_r1_noadv/final_model/model.safetensors noadv
-evaluate novares_shift r1noadv_shift
+evaluate novares_left r1noadv_left
 evaluate novares r1noadv_origin
 unserve
 say "expérience RECAP terminée"

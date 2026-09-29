@@ -43,22 +43,33 @@ def _cube() -> SimTask:
 NOVARES_SHIFT_DX = (0.04, 0.07)
 
 
-def _novares(shift: bool = False) -> SimTask:
+#: zones décalées candidates (hors distribution d'entraînement : ±3 cm, ±20°), dans la base WLA
+NOVARES_ZONES = {
+    "novares": {},
+    "novares_shift": {"dx_range": NOVARES_SHIFT_DX},                          # 4–7 cm plus loin
+    "novares_left": {"dy_range": (0.04, 0.07)},                               # 4–7 cm à gauche
+    "novares_right": {"dy_range": (-0.08, -0.05)},                            # 5–8 cm à droite
+    "novares_rot": {"dyaw_range": (0.45, 0.8)},                               # tournée de 26 à 46°
+    "novares_rot_neg": {"dyaw_range": (-0.8, -0.45)},                         # tournée de -26 à -46°
+}
+
+
+def _novares(name: str = "novares") -> SimTask:
     import novares_task as N
     grasp = N.NovaresGrasp()
     pose0 = {}
-    dx = NOVARES_SHIFT_DX if shift else N.DX
+    zone = NOVARES_ZONES[name]
 
     def place(sim: G1DSim, rng: np.random.Generator) -> None:
         if "T" not in pose0:                       # pose stable de la scène, lue une fois après reset
             pose0["T"] = sim.object_pose("piece").copy()
-        N.sample_piece(sim, rng, pose0["T"], dx_range=dx)
+        N.sample_piece(sim, rng, pose0["T"], **zone)
 
-    return SimTask("novares_shift" if shift else "novares", SCENE_XML, N.INSTRUCTION, "piece", N.LIFT_SUCCESS,
+    return SimTask(name, SCENE_XML, N.INSTRUCTION, "piece", N.LIFT_SUCCESS,
                    place=place, expert=lambda sim, rng, on_step=None: N.run_expert(sim, grasp, on_step=on_step))
 
 
-TASKS = {"cube": _cube, "novares": _novares, "novares_shift": lambda: _novares(shift=True)}
+TASKS = {"cube": _cube, **{z: (lambda z=z: _novares(z)) for z in NOVARES_ZONES}}
 
 
 def get_task(name: str) -> SimTask:

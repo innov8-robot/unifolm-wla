@@ -156,7 +156,7 @@ async def main_async(args) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--uri", default="ws://127.0.0.1:8600")
-    ap.add_argument("--task", choices=["cube", "novares", "novares_shift"], default="novares")
+    ap.add_argument("--task", default="novares", help="tâche de sim_tasks (cube, novares, novares_left...)")
     ap.add_argument("--instruction", default=None, help="défaut : instruction de la tâche")
     ap.add_argument("--unnorm_key", default="UnifoLM_G1_Dex1")
     ap.add_argument("--advantage", default=None, help="condition envoyée au serveur (modèle RECAP)")
