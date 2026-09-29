@@ -315,8 +315,7 @@ Référence complète : section 9 de `docs/G1D_Constats.md`.
 | Correspondance pince sim ou robot ↔ unité Dex1 WLA | Mesurer les valeurs ouverte et fermée des deux côtés |
 | Hauteur exacte de la table dans les datasets G1 | Plan de table par la caméra calibrée |
 | Le G1-D peut-il manipuler buste penché d'environ 0.166 rad ? | Tester sur le robot |
-| Le gel par sous-modules libère-t-il bien le projecteur seul ? | Lire les paramètres entraînables au lancement |
-| Indices moteurs du G1-D : les 35 moteurs contiennent-ils le tangage du buste ? | Lire `body.qpos` d'un épisode |
+| Lequel des indices 12 ou 13 de `body.qpos` est le tangage du buste ? Tous deux valent environ 0,09 rad dans `mon_test` | Incliner le buste sur le robot et regarder lequel bouge |
 
 ---
 
