@@ -23,6 +23,7 @@ RGB seulement : WLA n'utilise pas de profondeur.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import mujoco
@@ -31,6 +32,14 @@ import pinocchio as pin
 
 from .camera import SimCamera
 from .kinematics import ARM_JOINTS, ArmKinematics
+
+# Constantes du contrat iso WLA : source unique dans g1d_wla (racine du dépôt), partagée avec le
+# convertisseur d'enregistrements. Voir docs/G1D_Constats.md §9.
+_REPO = Path(__file__).resolve().parents[2]
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
+from g1d_wla.frames import (G1_PELVIS_TO_TORSO_XYZ, G1_STANDING_LEGS,  # noqa: E402
+                            TORSO_PITCH_TRAINING as TORSO_PITCH, WLA_EE_IN_WRIST)
 
 ASSETS = Path(__file__).resolve().parents[1] / "assets"
 SCENE_XML = ASSETS / "scene_g1d.xml"
@@ -44,32 +53,12 @@ CAMERAS = {"head_left": "head_left_cam", "cam_wrist_left": "left_wrist_cam",
 #: et seule vue des 32 datasets UniBot : ~3/4 des frames publiques avec pose effecteur).
 HEAD_VIEWS = {"rec": "head_left_cam", "raw": "head_left_raw_cam"}
 
-#: tangage du buste du G1 par rapport au bassin pendant la manipulation : médiane GLOBALE des
-#: statistiques d'entraînement (``observation.state.state_torso``, 54 M frames : 0.166 rad).
-#: Il dépend de la tâche : 0.127 (Stack_Block), 0.182 (Wipe_Table). Chez le G1 il est porté par
-#: le tangage de la taille. Buste droit, la caméra de tête plongerait ~10° de moins.
-TORSO_PITCH = 0.166
-#: jambes du G1 debout pendant les tâches de table Dex1, ordre [hip_pitch, hip_roll, hip_yaw,
-#: knee, ankle_pitch, ankle_roll] : moyenne des médianes de Stack_Block (40 épisodes) et
-#: Wipe_Table. Ces slots sont VALIDES à l'entraînement Dex1 (le serveur les marque valides) :
-#: le G1-D, sans jambes, doit envoyer cette posture pour rester dans la distribution.
-G1_STANDING_LEGS = {"left": np.array([-0.408, 0.027, -0.032, 0.664, -0.25, -0.016]),
-                    "right": np.array([-0.44, 0.005, 0.026, 0.639, -0.192, 0.007])}
 #: joint de tangage du buste. Il s'appelle ``Yaw_Joint`` dans la scène mais son axe est y.
 TORSO_JOINT = "Yaw_Joint"
 #: joints hors bras tenus fixes : colonne télescopique (2 étages) en butée basse, buste DROIT
 #: au reset. Le buste ne s'incline qu'une fois les bras au-dessus de la table (``go_ready``) :
 #: incliné en tuck, les poignets entrent dans la table et la physique diverge (mesuré).
 LOCKED_JOINTS = {"LZ_mt_Joint": 0.0, "LZ_it_Joint": 0.0, TORSO_JOINT: 0.0}
-#: bassin du G1 -> torso_link, tailles yaw = roll = 0 (URDF officiel g1_29dof_mode_15_with_dex1_1,
-#: vérifié par FK) : translation fixe puis tangage de la taille. Sert à placer le repère base
-#: WLA (= bassin du G1) comme un bassin VIRTUEL sous le buste du G1-D.
-G1_PELVIS_TO_TORSO_XYZ = np.array([-0.0039635, 0.0, 0.044])
-#: effecteur WLA (``*_ee_pose_gripper_base`` des datasets G1 Dex1) dans ``*_wrist_yaw_link`` :
-#: sur le G1, exactement wrist_yaw + 0.105 m le long de x, SANS rotation (FK sur un épisode,
-#: écart nul). Sur le G1-D on garde le même point PAR RAPPORT À LA PINCE : la Dex1 y est montée
-#: au même endroit (0.0415 m) avec 3 mm de décalage latéral, d'où ±0.003 en y.
-WLA_EE_IN_WRIST = {"left": np.array([0.105, 0.003, 0.0]), "right": np.array([0.105, -0.003, 0.0])}
 #: pose de DÉPART des épisodes G1 Dex1 : angles médians des bras à la frame 0 (40 épisodes de
 #: G1_Dex1_Stack_Block). Les bras G1 et G1-D étant identiques (au poignet près, 5 mm), ces angles
 #: redonnent la pose effecteur de départ du G1 dans la base WLA (vérifié : ~5 mm, ~0.05 rad).
