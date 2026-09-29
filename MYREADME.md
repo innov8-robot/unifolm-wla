@@ -210,7 +210,7 @@ Téléop xr_teleoperate ──► JSON + JPEG ──► convertisseur ──► 
             ┌──────────────────────────────────────────────────────┘
             ▼
 Fine-tuning WLA, VLM gelé ──► checkpoint ──► model_server ◄──► client robot ou sim (À ÉCRIRE)
- (examples/unifolm_wla/train_files/run_finetune_mmdit_frozen_vlm.sh)
+ (examples/unifolm_wla/train_files/run_finetune_g1d.sh)
 ```
 
 ### Convertisseur

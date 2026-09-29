@@ -44,7 +44,16 @@ trainer:
   freeze_modules: "qwen_vl_interface.model.model,qwen_vl_interface.model.lm_head"
 ```
 
-À valider au démarrage d'un entraînement avec la sortie de `print_trainable_parameters`. Les paramètres `robot_state_projector.net.*` doivent y apparaître comme entraînables, et le reste du VLM comme gelé.
+**[VÉRIFIÉ le 29 septembre 2026]** Le contournement fonctionne. Comptage module par module, modèle construit puis gelé :
+
+| Réglage | VLM entraînable | Projecteur entraînable | Tête DiT entraînable |
+|---|---|---|---|
+| `qwen_vl_interface`, recette officielle | 0 | **0** sur 6,87 M | 1 390,48 M |
+| `qwen_vl_interface.model.model,qwen_vl_interface.model.lm_head` | 0 | **6,87 M** | 1 390,48 M |
+
+Un vrai lancement confirme 1 397,3 M paramètres entraînables. La recette G1-D l'applique : `unifolm_wla/config/training/g1d_finetune_frozen_vlm.yaml`.
+
+**[VÉRIFIÉ]** Ni la recette officielle ni la nôtre ne tiennent sur une RTX 5090 Laptop, qui offre 23,4 Go utilisables. Les deux saturent au premier passage arrière. Avec l'optimiseur déporté en mémoire vive, la nôtre tourne à environ 1,7 s par pas. Le commentaire officiel parle pourtant d'« un seul GPU de 24 Go ».
 
 **À corriger avant tout fine-tuning G1-D.**
 
@@ -272,7 +281,7 @@ Nouvelles questions :
 
 | # | Question | Comment trancher |
 |---|---|---|
-| 7 | Le gel par sous-modules libère-t-il bien le projecteur seul ? | Lancer un fine-tuning court et lire la liste des paramètres entraînables. |
+| 7 | Le gel par sous-modules libère-t-il bien le projecteur seul ? | **Résolu** : oui, voir la section 2. |
 | 8 | Correspondance entre la hauteur G1 et la position de la colonne G1-D | Comparer les URDF à hauteur de caméra égale. |
 | 9 | Écart commande/mesure dans les données officielles | **Résolu** : décalage constant d'environ 1 cm, voir la section 9. |
 | 10 | Point et axes de l'effecteur G1 dans les datasets | **Résolu** : voir la section 9. |
