@@ -298,7 +298,17 @@ class MMDiTFlowmatchingActionHead(nn.Module):
         action_mask: torch.Tensor = None,
         encoder_attention_mask=None,
         body_type_ids: torch.Tensor = None,
+        prefix_actions: torch.Tensor = None,
+        prefix_weights: torch.Tensor = None,
     ) -> torch.Tensor:
+        """Échantillonnage flow matching (Euler, t : 0 = bruit -> 1 = action).
+
+        ``prefix_actions`` (B, H, D) normalisées + ``prefix_weights`` (B, H) dans [0, 1] : real-time
+        chunking par INPAINTING (ajout G1-D). À chaque pas, la partie pondérée du chunk est tirée
+        vers la version bruitée du préfixe au même t ; au final elle vaut le préfixe. Le reste du
+        chunk se raccorde ainsi en continuité avec les actions déjà engagées. Sans préfixe :
+        comportement d'origine inchangé.
+        """
         batch_size = vl_embs.shape[0]
         device = vl_embs.device
         actions = torch.randn(
@@ -306,6 +316,11 @@ class MMDiTFlowmatchingActionHead(nn.Module):
             dtype=vl_embs.dtype,
             device=device,
         )
+        use_prefix = prefix_actions is not None and prefix_weights is not None
+        if use_prefix:
+            noise0 = actions.clone()
+            prefix_actions = prefix_actions.to(device=device, dtype=actions.dtype)
+            w = prefix_weights.to(device=device, dtype=actions.dtype).unsqueeze(-1)   # (B, H, 1)
 
         mask_part = None
         if action_mask is not None:
@@ -319,6 +334,11 @@ class MMDiTFlowmatchingActionHead(nn.Module):
 
         for step in range(num_steps):
             t_cont = step / float(num_steps)
+            if use_prefix:
+                target = (1.0 - t_cont) * noise0 + t_cont * prefix_actions
+                actions = w * target + (1.0 - w) * actions
+                if mask_part is not None:
+                    actions = actions * mask_part
             t_discretized = int(t_cont * self.num_timestep_buckets)
             timesteps_tensor = torch.full(size=(batch_size,), fill_value=t_discretized, device=device)
 
@@ -347,6 +367,10 @@ class MMDiTFlowmatchingActionHead(nn.Module):
                 if mask_part is not None
                 else actions + dt * pred_velocity
             )
+        if use_prefix:
+            actions = w * prefix_actions + (1.0 - w) * actions
+            if mask_part is not None:
+                actions = actions * mask_part
         return actions
 
     @property

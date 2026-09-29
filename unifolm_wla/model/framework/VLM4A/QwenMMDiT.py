@@ -368,10 +368,19 @@ class Qwen_MMDiT(baseframework):
 
         body_type_ids = self._build_body_type_ids(examples, last_hidden.device)
 
+        # Real-time chunking (ajout G1-D) : préfixe d'actions normalisées fourni par l'appelant.
+        prefix_actions = prefix_weights = None
+        if examples[0].get("action_prefix") is not None:
+            prefix_actions = torch.tensor(np.array([e["action_prefix"] for e in examples]),
+                                          device=last_hidden.device, dtype=torch.float32)
+            prefix_weights = torch.tensor(np.array([e["action_prefix_weights"] for e in examples]),
+                                          device=last_hidden.device, dtype=torch.float32)
+
         with torch.autocast("cuda", dtype=torch.float32):
             pred_actions = self.action_model.predict_action(
                 last_hidden, state, action_mask=action_mask,
                 encoder_attention_mask=backbone_attention_mask, body_type_ids=body_type_ids,
+                prefix_actions=prefix_actions, prefix_weights=prefix_weights,
             )
 
         normalized_actions = pred_actions.detach().cpu().numpy()

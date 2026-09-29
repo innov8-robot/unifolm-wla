@@ -186,6 +186,8 @@ class ActionServerWBCMsgpack:
         self._img_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="imgdecode")
 
         self._debug_saver = StepDebugSaver(args.debug_save_dir)
+        # Real-time chunking (ajout G1-D) : dernier chunk prédit, pour construire un préfixe.
+        self._rtc_prev = None
 
     @property
     def metadata(self) -> Dict[str, Any]:
@@ -256,6 +258,38 @@ class ActionServerWBCMsgpack:
                 img = cv2.resize(img, (target_w, target_h), interpolation=cv2.INTER_LINEAR)  # cv2: (W,H)
         return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
+    def _rtc_prefix(self, obs: dict, unnorm_key: str, state_unnorm: np.ndarray):
+        """Préfixe (H, 54) normalisé + poids (H,) à partir du chunk précédent, ou (None, None).
+
+        Le client indique ``rtc_executed`` (pas du chunk précédent déjà exécutés) et
+        ``rtc_prefix`` (nombre de pas suivants à imposer). Les slots effecteurs, relatifs à
+        l'ancre, sont RÉ-EXPRIMÉS par rapport à la nouvelle ancre mesurée ; les autres slots
+        reprennent les valeurs normalisées précédentes."""
+        d = int(obs.get("rtc_prefix", 0) or 0)
+        e = int(obs.get("rtc_executed", 0) or 0)
+        prev = self._rtc_prev
+        if d <= 0 or prev is None or prev["unnorm_key"] != unnorm_key or e + d > len(prev["pred_norm"]):
+            return None, None
+        H = self._action_chunk_size
+        norm = self._norm_arrays[unnorm_key]
+        prefix = np.zeros((H, prev["pred_norm"].shape[1]), dtype=np.float32)
+        prefix[:d] = prev["pred_norm"][e:e + d]
+        for side in ("left", "right"):
+            anchor = state_unnorm[STATE_SLICES[f"{side}_xyz_rot6d"]]
+            A = np.eye(4)
+            A[:3, :3], A[:3, 3] = _rot6d_to_matrix(anchor[3:9].reshape(1, 6))[0], anchor[:3]
+            ee9 = prev["abs_ee9"][side][e:e + d]
+            Tb = np.tile(np.eye(4), (d, 1, 1))
+            Tb[:, :3, :3] = _rot6d_to_matrix(ee9[:, 3:9])
+            Tb[:, :3, 3] = ee9[:, :3]
+            rel = np.linalg.inv(A)[None] @ Tb
+            rel6 = np.concatenate([rel[:, :3, 3], Rotation.from_matrix(rel[:, :3, :3]).as_rotvec()], axis=1)
+            sl = SLICES[f"{side}_xyz_rotvec"]
+            prefix[:d, sl] = (rel6 - norm["action_offset"][sl]) / (norm["action_scale"][sl] + 1e-8)
+        weights = np.zeros(H, dtype=np.float32)
+        weights[:d] = 1.0
+        return prefix, weights
+
     def _build_example(self, obs: dict) -> dict:
         unnorm_key = self._resolve_unnorm_key(obs)
 
@@ -278,6 +312,10 @@ class ActionServerWBCMsgpack:
             "arm_type": "dual_with_legs",
             "robot_type": "unitree",
         }
+        prefix, weights = self._rtc_prefix(obs, unnorm_key, state_unnorm)
+        if prefix is not None:
+            example["action_prefix"] = prefix
+            example["action_prefix_weights"] = weights
         return {"example": example, "unnorm_key": unnorm_key, "state_unnorm": state_unnorm}
 
     # ── unified action -> client action dict ───────────────────────────────
@@ -342,6 +380,14 @@ class ActionServerWBCMsgpack:
         t2 = time.perf_counter()
         pred_norm = out["normalized_actions"][0]   # (T,54)
         action = self._encode_action(pred_norm, prep["unnorm_key"], prep["state_unnorm"])
+        su = prep["state_unnorm"]
+        norm = self._norm_arrays[prep["unnorm_key"]]
+        unnorm = (pred_norm * norm["action_scale"] + norm["action_offset"]).astype(np.float32)
+        self._rtc_prev = {
+            "unnorm_key": prep["unnorm_key"], "pred_norm": np.asarray(pred_norm, np.float32),
+            "abs_ee9": {s: _compose_ee9(su[STATE_SLICES[f"{s}_xyz_rot6d"]], unnorm[:, SLICES[f"{s}_xyz_rotvec"]])
+                        for s in ("left", "right")},
+        }
 
         self._debug_saver.save_step(
             images=prep["example"]["image"],
@@ -373,6 +419,7 @@ class ActionServerWBCMsgpack:
                 if mtype == "get_action":
                     return_data = self.get_action(msg["obs"])
                 elif mtype in ("policy_reset", "update_dataset"):
+                    self._rtc_prev = None
                     return_data = {}
                 elif mtype in ("policy_train", "policy_save", "policy_load", "episode_end", "obs_init"):
                     return_data = None

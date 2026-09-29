@@ -79,11 +79,15 @@ def build_obs(sim: G1DSim, instruction: str, unnorm_key: str | None) -> dict:
     return obs, imgs
 
 
-async def run_chunks(ws, packer, sim, args, frames, max_steps) -> list:
-    """Joue des chunks jusqu'à ``max_steps`` pas ; rend le journal par chunk."""
-    entries, steps = [], 0
-    while steps < max_steps:
+async def run_chunks(ws, packer, sim, args, frames, max_steps, done=None) -> tuple[list, int | None]:
+    """Joue des chunks jusqu'à ``max_steps`` pas ; rend (journal par chunk, premier pas où
+    ``done()`` est vrai, ou None). Avec ``--stop-on-success``, s'arrête à ce pas."""
+    entries, steps, first_done, prev_exec = [], 0, None, None
+    while steps < max_steps and not (first_done is not None and args.stop_on_success):
         obs, _ = build_obs(sim, args.instruction, args.unnorm_key)
+        if args.rtc_prefix > 0 and prev_exec is not None:
+            # real-time chunking : imposer la suite du chunk précédent (voir le serveur)
+            obs["rtc_executed"], obs["rtc_prefix"] = prev_exec, args.rtc_prefix
         t0 = time.perf_counter()
         await ws.send(packer.pack({"type": "get_action", "obs": obs}))
         raw = await ws.recv()
@@ -101,17 +105,20 @@ async def run_chunks(ws, packer, sim, args, frames, max_steps) -> list:
                 refused[s] += not sim.track_ee_wla(s, xyz_rpy_to_matrix(chunk[s][t]))
                 sim.set_gripper(s, dex1_to_closure(grip[s][t]))
             sim.step()
+            if done is not None and first_done is None and done():
+                first_done = steps + t + 1
             if frames is not None and (steps + t) % args.video_every == 0:
                 v = sim.render_all()
                 frames.append(np.concatenate([v["head_left"], v["cam_wrist_left"], v["cam_wrist_right"]], axis=1))
         steps += n_exec
+        prev_exec = n_exec
         entries.append({
             "inference_s": round(dt, 3), "exec_steps": n_exec, "ik_refused": refused,
             "ee_start": {s: np.round(ee_before[s], 4).tolist() for s in SIDES},
             "ee_reached": {s: np.round(sim.ee_pose_wla(s)[:3, 3], 4).tolist() for s in SIDES},
             "gripper_cmd_dex1": {s: [round(float(grip[s][0]), 3), round(float(grip[s][n_exec - 1]), 3)] for s in SIDES},
         })
-    return entries
+    return entries, first_done
 
 
 def save_video(frames, path: Path, fps: float) -> None:
@@ -140,6 +147,8 @@ async def run(args) -> dict:
         for e in range(args.episodes):
             sim.reset()
             sim.go_ready()
+            await ws.send(packer.pack({"type": "policy_reset"}))   # vide la mémoire RTC du serveur
+            await ws.recv()
             ep = {"episode": e}
             if cube:
                 from cube_task import LIFT_SUCCESS, cube_in_base, sample_cube
@@ -147,21 +156,27 @@ async def run(args) -> dict:
                 z0 = sim.object_pose("cube")[2, 3]
                 ep["cube_base"] = np.round(cube_in_base(sim), 4).tolist()
             frames = [] if e < args.videos else None
-            ep["chunks"] = await run_chunks(ws, packer, sim, args, frames, args.max_steps)
+            done = (lambda: sim.object_pose("cube")[2, 3] - z0 > LIFT_SUCCESS) if cube else None
+            ep["chunks"], ep["steps_to_success"] = await run_chunks(ws, packer, sim, args, frames, args.max_steps, done)
             if cube:
                 ep["lifted"] = round(float(sim.object_pose("cube")[2, 3] - z0), 4)
-                ep["success"] = bool(ep["lifted"] > LIFT_SUCCESS)
+                # réussite = cube soulevé de plus de LIFT_SUCCESS à un moment ET encore tenu à la fin
+                ep["success"] = bool(ep["steps_to_success"] is not None and ep["lifted"] > LIFT_SUCCESS)
             if frames:
                 save_video(frames, out / f"episode_{e:03d}.mp4", 30 / args.video_every)
             log["episodes"].append(ep)
             msg = f"épisode {e}: {len(ep['chunks'])} chunks"
             if cube:
-                msg += f" | cube {ep['cube_base']} | soulevé {ep['lifted']*100:.1f} cm -> {'RÉUSSI' if ep['success'] else 'raté'}"
+                msg += (f" | cube {ep['cube_base']} | soulevé {ep['lifted']*100:.1f} cm -> {'RÉUSSI' if ep['success'] else 'raté'}"
+                        f" | pas {ep['steps_to_success']}")
             print(msg, flush=True)
     if cube:
         n_ok = sum(ep["success"] for ep in log["episodes"])
         log["success_rate"] = n_ok / len(log["episodes"])
-        print(f"réussite {n_ok}/{len(log['episodes'])}")
+        t_ok = [ep["steps_to_success"] for ep in log["episodes"] if ep["success"]]
+        log["median_steps_to_success"] = float(np.median(t_ok)) if t_ok else None
+        med = f"{np.median(t_ok):.0f}" if t_ok else "-"
+        print(f"réussite {n_ok}/{len(log['episodes'])} | pas médian jusqu'à la réussite {med} (expert : ~130)")
     (out / "log.json").write_text(json.dumps(log, indent=1))
     sim.close()
     return log
@@ -179,6 +194,11 @@ def main() -> None:
     ap.add_argument("--max-steps", dest="max_steps", type=int, default=200, help="pas de 30 Hz par épisode")
     ap.add_argument("--seed", type=int, default=7, help="tirage des cubes (les démos utilisent 1000)")
     ap.add_argument("--videos", type=int, default=3, help="nombre d'épisodes filmés")
+    ap.add_argument("--rtc-prefix", dest="rtc_prefix", type=int, default=0,
+                    help="real-time chunking : pas du chunk précédent imposés en tête du suivant (0 = off). "
+                         "Il faut --exec-steps + --rtc-prefix <= 30")
+    ap.add_argument("--stop-on-success", dest="stop_on_success", action="store_true",
+                    help="arrêter l'épisode dès la réussite (évaluations rapides)")
     ap.add_argument("--exec-steps", dest="exec_steps", type=int, default=20,
                     help="pas exécutés par chunk (30 = chunk entier)")
     ap.add_argument("--video-every", dest="video_every", type=int, default=2)
