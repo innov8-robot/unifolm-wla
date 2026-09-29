@@ -688,9 +688,14 @@ La comparaison entre les étapes 5 et 6 dira si le gain vient du conditionnement
 
 ### Pour le vrai robot
 
-**[À FAIRE]**
-- **Correction en delta dans xr_teleoperate** : pendant que la politique joue, un décalage donné par la manette s'ajoute à la pose cible avant l'IK. Le pas est alors enregistré avec `intervention` = 1.
-- **Signal de réussite** : un bouton de l'opérateur qui écrit `info.success_step` et `info.outcome`.
+**[FAIT, non validé sur le robot]** Mode politique avec correction en delta dans xr_teleoperate, `teleop/policy_bridge.py` et option `--policy-uri`. Procédure dans `teleoperation/REAMDEG1D.md`.
+
+- **Pilotage** : la politique WLA pilote les bras par l'IK de la téléop.
+- **Correction** : grip maintenu, le déplacement de la manette s'ajoute à la cible, et le pas est enregistré avec `intervention` = 1. La gâchette donne la pince à l'opérateur.
+- **Fin d'essai** : `X` ou `Y` gauche termine l'essai, réussi ou raté, et écrit `info.success_step` et `info.outcome`.
+- **Repères, vérifiés hors robot** : l'IK de la téléop vise `wrist_yaw` + 0,05 m dans le repère de son modèle G1 à taille verrouillée, ce qui correspond à la base WLA à buste droit. Son URDF a le même poignet que le G1-D. La conversion colle exactement à la FK de l'IK, à 0,00 mm près sur 50 poses aléatoires.
+- **Sécurité** : vitesse de la cible bornée, 0,10 m/s par défaut. Les bras tiennent leur pose hors essai.
+- **Latence** : une requête au modèle, environ 0,4 s, bloque la boucle. Les bras tiennent leur dernière cible pendant ce temps. Préchargement asynchrone possible plus tard.
 
 **[INCONNU]** Plusieurs choix restent ouverts, et le blog de Delta ne les donne pas non plus :
 - le seuil d'étiquetage ;

@@ -4,6 +4,7 @@ from multiprocessing import Value, Array, Lock
 import threading
 import cv2
 import logging_mp
+import numpy as np
 logging_mp.basicConfig(level=logging_mp.INFO)
 logger_mp = logging_mp.getLogger(__name__)
 
@@ -132,9 +133,22 @@ if __name__ == '__main__':
     parser.add_argument('--task-goal', type = str, default = 'pick up cube.', help = 'task goal for recording at json file')
     parser.add_argument('--task-desc', type = str, default = 'task description', help = 'task description for recording at json file')
     parser.add_argument('--task-steps', type = str, default = 'step1: do this; step2: do that;', help = 'task steps for recording at json file')
+    # mode POLITIQUE (G1-D, RECAP / Delta-0) : la politique WLA pilote, l'opérateur corrige en delta
+    parser.add_argument('--policy-uri', type=str, default=None,
+                        help='Serveur UnifoLM-WLA (ex. ws://192.168.123.2:8600). Active le mode politique : '
+                             'grip maintenu = correction en delta du bras de ce côté, gâchette = pince ; '
+                             'X gauche = essai RÉUSSI, Y gauche = essai RATÉ (fin et sauvegarde de l\'épisode).')
+    parser.add_argument('--policy-instruction', type=str, default=None, help='instruction envoyée au modèle (défaut : --task-goal)')
+    parser.add_argument('--policy-advantage', type=str, default=None, help='condition RECAP envoyée au modèle, ex. positive')
+    parser.add_argument('--policy-exec-steps', type=int, default=30, help='pas exécutés par chunk avant replanification')
+    parser.add_argument('--policy-max-speed', type=float, default=0.10, help='vitesse max des cibles (m/s) ; commencer bas')
+    parser.add_argument('--torso-pitch-index', type=int, default=13, help='indice du tangage du buste dans les 35 moteurs (HYPOTHÈSE)')
+    parser.add_argument('--torso-pitch', type=float, default=None, help='tangage du buste constant (rad), remplace --torso-pitch-index')
 
     args = parser.parse_args()
     logger_mp.info(f"args: {args}")
+    if args.policy_uri and not (args.arm == "G1_29" and args.ee == "dex1" and args.input_mode == "controller" and not args.motion):
+        parser.error("--policy-uri demande --arm G1_29 --ee dex1 --input-mode controller, sans --motion")
     LEFT_TRIGGER_PREV = 0.0
     RIGHT_TRIGGER_PREV = 0.0
 
@@ -278,6 +292,22 @@ if __name__ == '__main__':
             from teleop.utils.sim_state_topic import start_sim_state_subscribe
             sim_state_subscriber = start_sim_state_subscribe()
 
+        # mode politique (G1-D, RECAP) : pont vers le serveur WLA
+        bridge = None
+        if args.policy_uri:
+            from policy_bridge import PolicyBridge
+            bridge = PolicyBridge(args.policy_uri, args.policy_instruction or args.task_goal,
+                                  advantage=args.policy_advantage, exec_steps=args.policy_exec_steps,
+                                  frequency=args.frequency, max_speed=args.policy_max_speed,
+                                  torso_pitch_index=args.torso_pitch_index, torso_pitch=args.torso_pitch,
+                                  control_left=not args.right_only)
+            logger_mp.info(f"🤖  Mode POLITIQUE : {args.policy_uri} | grip = corriger, gâchette = pince, "
+                           f"X gauche = réussi, Y gauche = raté | vitesse max {args.policy_max_speed} m/s")
+        policy_intervention = False
+        episode_steps = 0
+        head_img = left_wrist_img = right_wrist_img = None      # caméra désactivée : reste None
+        prev_lX = prev_lY = False
+
         # record + headless / non-headless mode
         if args.record:
             # Real recorded color/depth resolution = head camera (color_0 / depth_0).
@@ -320,13 +350,13 @@ if __name__ == '__main__':
             start_time = time.time()
             # get image
             if camera_config['head_camera']['enable_zmq']:
-                if args.record or xr_need_local_img:
+                if args.record or xr_need_local_img or bridge is not None:
                     head_img = img_client.get_head_frame()
             if camera_config['left_wrist_camera']['enable_zmq']:
-                if args.record or (args.wrist_pip and xr_need_local_img):
+                if args.record or (args.wrist_pip and xr_need_local_img) or bridge is not None:
                     left_wrist_img = img_client.get_left_wrist_frame()
             if camera_config['right_wrist_camera']['enable_zmq']:
-                if args.record or (args.wrist_pip and xr_need_local_img):
+                if args.record or (args.wrist_pip and xr_need_local_img) or bridge is not None:
                     right_wrist_img = img_client.get_right_wrist_frame()
             if xr_need_local_img and camera_config['head_camera']['enable_zmq'] and head_img.bgr is not None:
                 lw = left_wrist_img.bgr  if (args.wrist_pip and camera_config['left_wrist_camera']['enable_zmq'])  else None
@@ -339,6 +369,9 @@ if __name__ == '__main__':
                 if not RECORD_RUNNING:
                     if recorder.create_episode():
                         RECORD_RUNNING = True
+                        episode_steps = 0
+                        if bridge is not None:
+                            bridge.reset()
                     else:
                         logger_mp.error("Failed to create episode. Recording not started.")
                 else:
@@ -367,6 +400,15 @@ if __name__ == '__main__':
                 if rB and not prev_rB:
                     RECORD_CANCEL = True
                 prev_rA, prev_rB = rA, rB
+            if bridge is not None and args.record and START:
+                lX, lY = bool(tele_data.left_ctrl_aButton), bool(tele_data.left_ctrl_bButton)
+                if RECORD_RUNNING and ((lX and not prev_lX) or (lY and not prev_lY)):
+                    ok_ep = lX and not prev_lX
+                    recorder.set_episode_info({"success_step": episode_steps if ok_ep else None,
+                                               "outcome": "success" if ok_ep else "failure"})
+                    logger_mp.info(f"🏁  Essai {'RÉUSSI' if ok_ep else 'RATÉ'} au pas {episode_steps}")
+                    RECORD_TOGGLE = True                     # arrête et sauvegarde l'épisode
+                prev_lX, prev_lY = lX, lY
             if (args.ee == "dex3" or args.ee == "inspire_dfx" or args.ee == "inspire_ftp" or args.ee == "brainco") and args.input_mode == "hand":
                 with left_hand_pos_array.get_lock():
                     left_hand_pos_array[:] = tele_data.left_hand_pos.flatten()
@@ -411,7 +453,35 @@ if __name__ == '__main__':
 
             # solve ik using motor data and wrist pose, then use ik results to control arms.
             time_ik_start = time.time()
-            sol_q, sol_tauff  = arm_ik.solve_ik(tele_data.left_wrist_pose, tele_data.right_wrist_pose, current_lr_arm_q, current_lr_arm_dq)
+            left_target, right_target = tele_data.left_wrist_pose, tele_data.right_wrist_pose
+            if bridge is not None:
+                policy_active = RECORD_RUNNING if args.record else START
+                body_q = arm_ctrl.get_current_motor_q()
+                imgs_ok = (head_img is not None and head_img.bgr is not None and right_wrist_img is not None
+                           and right_wrist_img.bgr is not None
+                           and (args.right_only or (left_wrist_img is not None and left_wrist_img.bgr is not None)))
+                if policy_active and imgs_ok:
+                    head = head_img.bgr
+                    if camera_config['head_camera']['binocular']:
+                        head = head[:, :head.shape[1] // 2]            # œil GAUCHE (brut), comme les datasets
+                    lw = right_wrist_img.bgr if args.right_only else left_wrist_img.bgr
+                    with dual_gripper_data_lock:
+                        grip_meas = np.array([dual_gripper_state_array[0], dual_gripper_state_array[1]])
+                    res = bridge.step({"head": head, "left_wrist": lw, "right_wrist": right_wrist_img.bgr},
+                                      np.asarray(current_lr_arm_q), grip_meas, body_q, tele_data)
+                    left_target, right_target = res["left"], res["right"]
+                    policy_intervention = res["intervention"]
+                    if not args.right_only:
+                        with left_gripper_value.get_lock():
+                            left_gripper_value.value = res["trigger"]["left"]
+                    with right_gripper_value.get_lock():
+                        right_gripper_value.value = res["trigger"]["right"]
+                else:                                                  # politique inactive : tenir la pose mesurée
+                    pitch = bridge._pitch(body_q)
+                    left_target = bridge.conv.wla_to_ik("left", bridge.conv.ee_wla("left", np.asarray(current_lr_arm_q[:7]), pitch), pitch)
+                    right_target = bridge.conv.wla_to_ik("right", bridge.conv.ee_wla("right", np.asarray(current_lr_arm_q[7:]), pitch), pitch)
+                    policy_intervention = False
+            sol_q, sol_tauff  = arm_ik.solve_ik(left_target, right_target, current_lr_arm_q, current_lr_arm_dq)
             time_ik_end = time.time()
             logger_mp.debug(f"ik:\t{round(time_ik_end - time_ik_start, 6)}")
             # --right-only: hold the left arm at its captured pose (position-held, no feedforward)
@@ -560,7 +630,9 @@ if __name__ == '__main__':
                         sim_state = sim_state_subscriber.read_data()            
                         recorder.add_item(colors=colors, depths=depths, states=states, actions=actions, sim_state=sim_state)
                     else:
-                        recorder.add_item(colors=colors, depths=depths, states=states, actions=actions)
+                        recorder.add_item(colors=colors, depths=depths, states=states, actions=actions,
+                                          extra={"intervention": int(policy_intervention)} if bridge is not None else None)
+                    episode_steps += 1
 
             current_time = time.time()
             time_elapsed = current_time - start_time
@@ -588,6 +660,12 @@ if __name__ == '__main__':
         except Exception as e:
             logger_mp.error(f"Failed to stop keyboard listener or ipc server: {e}")
         
+        try:
+            if bridge is not None:
+                bridge.close()
+        except Exception as e:
+            logger_mp.error(f"Failed to close policy bridge: {e}")
+
         try:
             img_client.close()
         except Exception as e:

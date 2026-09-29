@@ -80,3 +80,72 @@ print(c.get_head_frame().bgr.shape)   # attendu : (480, 1280, 3)
 ```
 
 Si le serveur du robot contient encore le code Orbbec, ce n'est pas gênant tant que la config est en `type: uvc`.
+
+---
+
+## Mode politique avec corrections (RECAP / Delta-0)
+
+La politique WLA pilote les bras, et l'opérateur, casque sur la tête, corrige en direct. Les essais enregistrés servent ensuite à réentraîner le modèle : voir `docs/G1D_Constats.md`, section 15.
+
+⚠ **Non validé sur le robot.** Premiers essais : vitesse bridée, zone dégagée, arrêt d'urgence à portée, et quelqu'un prêt à appuyer sur `q`.
+
+**1. Sur le PC d'inférence**, env uv du projet, avec le modèle à améliorer :
+```bash
+.venv/bin/python -m model_server.action_server_wbc_msgpack_unitree --unnorm_key UnifoLM_G1_Dex1 \
+    --ckpt_path playground/Checkpoints/<run>/final_model/model.safetensors --port 8600
+    # + --advantage positive pour un modèle déjà entraîné par RECAP
+```
+
+**2. Sur le PC de téléop**, env `g1d_teleop` :
+```bash
+python teleop_hand_and_arm.py --network-interface=enx0c3796e0bc5b --img-server-ip=192.168.123.164 \
+    --input-mode=controller --arm=G1_29 --ee=dex1 --record --task-name=recap_r1 --task-goal="pick up the black part" \
+    --policy-uri ws://<ip-du-PC-d-inférence>:8600 --policy-max-speed 0.10
+```
+
+**3. Pendant les essais :**
+
+| Commande | Effet |
+|---|---|
+| `r` | Démarrer. Les bras tiennent leur pose tant qu'aucun essai n'est en cours |
+| `A` droit, ou `s` | Commencer un essai : la politique prend la main, et l'enregistrement démarre |
+| **Grip** d'une manette, maintenu | Correction : le déplacement de la manette depuis l'appui s'ajoute au geste du bras de ce côté. Au relâchement, le modèle replanifie |
+| Gâchette pendant la correction | L'opérateur tient la pince de ce côté |
+| `X` gauche | Fin d'essai **réussi**, épisode sauvegardé |
+| `Y` gauche | Fin d'essai **raté**, épisode sauvegardé |
+| `B` droit | Annuler l'essai en cours, épisode jeté |
+| `q` | Quitter |
+
+**Conseils :**
+- corriger tôt et petit ;
+- laisser aussi quelques échecs aller au bout, car ils servent au modèle de valeur ;
+- viser 30 à 50 essais par cycle.
+
+**Options :**
+
+| Option | Défaut | Rôle |
+|---|---|---|
+| `--policy-max-speed` | 0,10 m/s | Vitesse maximale des cibles |
+| `--policy-exec-steps` | 30 | Pas exécutés par chunk |
+| `--policy-advantage` | — | Condition envoyée au modèle, par exemple `positive` |
+| `--torso-pitch-index` | 13 | Indice du tangage du buste dans les 35 moteurs. **Hypothèse à vérifier** |
+| `--torso-pitch` | — | Tangage constant, en rad, à la place de l'indice |
+| `--right-only` | — | Un seul bras, le gauche reste immobile |
+
+L'aide de la téléop n'affiche pas ces options, pas plus que les options d'origine comme `--task-goal`. Elle ne montre que celles du casque.
+
+**Test hors robot :**
+```bash
+cd teleoperation/Tele_OP/xr_teleoperate/teleop && python test_policy_bridge.py
+```
+Il couvre les repères, la pince et la logique de correction avec un faux serveur.
+
+**Ensuite, sur le PC d'inférence** : modèle de valeur, étiquetage, conversion et réentraînement.
+```bash
+.venv/bin/python -m g1d_wla.recap train-value --episodes <démos> teleoperation/.../utils/data/recap_r1 --out playground/recap/value_r1.pt
+.venv/bin/python -m g1d_wla.recap label --value playground/recap/value_r1.pt --episodes teleoperation/.../utils/data/recap_r1
+.venv/bin/python -m g1d_wla.recap label --all-positive --episodes <démos>
+# conversion de chaque dossier avec --advantage on, puis fine-tuning avec advantage_key dans la config de données
+```
+Le modèle de valeur a besoin du pas de réussite de chaque démo. Les démos réelles n'en ont pas encore, et il faudra le marquer, par exemple en réenregistrant avec `X` en fin de démo.
+

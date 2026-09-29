@@ -130,7 +130,8 @@ class EpisodeWriter():
         logger_mp.info(f"==> New episode created: {self.episode_dir}")
         return True  # Return True if the episode is successfully created
         
-    def add_item(self, colors, depths=None, states=None, actions=None, tactiles=None, audios=None, sim_state=None):
+    def add_item(self, colors, depths=None, states=None, actions=None, tactiles=None, audios=None, sim_state=None,
+                 extra=None):
         # Increment the item ID
         self.item_id += 1
         # Create the item data dictionary
@@ -144,6 +145,9 @@ class EpisodeWriter():
             'audios': audios,
             'sim_state': sim_state,
         }
+        # champs par pas optionnels (G1-D, RECAP) : p. ex. {"intervention": 0|1}
+        if extra:
+            item_data.update(extra)
         # Enqueue the item data
         self.item_data_queue.put(item_data)
 
@@ -209,6 +213,11 @@ class EpisodeWriter():
             logger_mp.info(f"==> episode_id:{self.episode_id}  item_id:{idx}  current_time:{curent_record_time}")
             self.rerun_logger.log_item_data(item_data)
 
+    def set_episode_info(self, info: dict):
+        """Champs d'en-tête à ajouter à ``info`` à la sauvegarde (G1-D, RECAP) : ``success_step``,
+        ``outcome``... L'en-tête est écrit à la création de l'épisode, avant l'issue de l'essai."""
+        self.pending_info = dict(info)
+
     def save_episode(self):
         """
         Trigger the save operation. This sets the save flag, and the process_queue thread will handle it.
@@ -222,6 +231,14 @@ class EpisodeWriter():
         """
         with open(self.json_path, "a", encoding="utf-8") as f:
             f.write("\n]\n}")      # Close the JSON array and object
+        pending = getattr(self, "pending_info", None)
+        if pending:                # en-tête complété après coup (issue de l'essai)
+            with open(self.json_path, "r", encoding="utf-8") as f:
+                doc = json.load(f)
+            doc["info"].update(pending)
+            with open(self.json_path, "w", encoding="utf-8") as f:
+                json.dump(doc, f, ensure_ascii=False, indent=4)
+            self.pending_info = None
 
         self.need_save = False     # Reset the save flag
         self.is_available = True   # Mark the class as available after saving
