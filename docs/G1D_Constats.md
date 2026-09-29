@@ -582,3 +582,42 @@ Le préfixe rend la replanification fréquente utilisable : à 10 pas par chunk,
 - **Point de départ** : chunks entiers, `--exec-steps 30` sans préfixe, pour la fiabilité. Passer à 10 pas + préfixe de 20 si la réactivité ou la vitesse comptent plus.
 - **Nombre de démos** : viser **25 à 50 démos** pour une première tâche plutôt que 200, puis ajuster selon le taux de réussite. Le briefing prévoyait 50 à 200.
 
+---
+
+## 14. Tâches Novares en sim : saisie et empilement (29 septembre 2026)
+
+### Saisie par la prise peinte
+
+**[VÉRIFIÉ]** Les zones de prise peintes dans mpc_any s'appliquent telles quelles à la sim. Le fichier `configs/projects/usine/novares.zones.json` y est associé au même STL que celui de la sim, avec une md5 identique. Le passage du STL au repère MuJoCo est `v_géom = R(mesh_quat)ᵀ (v_stl − mesh_pos)`.
+
+- **Prise** : une prise peinte, `prise_1`, de 52 mm de large. Les mors serrent les deux extrémités de la paroi courbe. 11 approches sur 24 ne traversent pas la pièce, et l'approche verticale est atteignable par le bras droit.
+- **Expert** : il réussit 46 prises sur 50, avec la pièce à ±3 cm et ±20°. Il faut monter la main, faire un transfert articulaire puis descendre. Une rotation cartésienne près de la table faisait balayer la pièce par l'avant-bras.
+
+### Empilement de deux pièces
+
+**[VÉRIFIÉ]** Les pièces s'emboîtent en sim. La position a été trouvée par recherche géométrique, en prenant la hauteur minimale sans interpénétration :
+
+| Mesure | Valeur |
+|---|---|
+| Décalage de la pièce du dessus | environ 17 mm vers la gauche et 16 mm plus haut |
+| Décalage nul, pour comparaison | 59 mm de haut, posée sur la crête |
+| Décalage dans le repère du support | (3, −20, 11) mm, dans `_Novares_Piece1_centered.stack.json`, non versionné |
+
+- **Robustesse** : lâchée de 5 à 30 mm au-dessus, avec ±4 mm et ±5° d'erreur, la pièce retombe presque toujours à moins de 8 mm de la pose emboîtée.
+- **Glissement dans la pince** : à la levée, la pièce bouge de 7 à 13 mm et de 6 à 13°. L'expert doit donc replanifier le dépôt avec la pose réellement tenue.
+
+**[VÉRIFIÉ] Blocage** : avec la prise peinte, **toutes** les approches atteignables mettent un doigt, `Link1_1` ou `Link2_1`, contre la pièce du dessous en pose emboîtée. C'est logique : les doigts tiennent les extrémités de la paroi, et ce sont précisément ces zones qui se logent contre la pièce du dessous.
+
+| Variante | Réussites |
+|---|---|
+| Lâcher à 2 cm, correction du lacet seulement | 3 / 20 |
+| Autres combinaisons de hauteur de prise et de lâcher | 0 à 1 / 12 |
+
+Le support est poussé de 7 à 13 mm en médiane.
+
+**[INCONNU] À trancher avec l'opérateur** :
+- quelle prise est utilisée en réel pour empiler, par exemple sur la plaque ou sur une autre zone ;
+- ou faut-il peindre une seconde zone de prise, compatible avec l'emboîtement.
+
+**[INFÉRÉ]** L'emboîtement en sim repose aussi sur la décomposition convexe de la pièce en 90 morceaux. Il peut différer de l'emboîtement réel.
+
