@@ -609,6 +609,17 @@ Le préfixe rend la replanification fréquente utilisable : à 10 pas par chunk,
 - **Prise** : une prise peinte, `prise_1`, de 52 mm de large. Les mors serrent les deux extrémités de la paroi courbe. 11 approches sur 24 ne traversent pas la pièce, et l'approche verticale est atteignable par le bras droit.
 - **Expert** : il réussit 46 prises sur 50, avec la pièce à ±3 cm et ±20°. Il faut monter la main, faire un transfert articulaire puis descendre. Une rotation cartésienne près de la table faisait balayer la pièce par l'avant-bras.
 
+### Fine-tuning sur la tâche Novares
+
+**[VÉRIFIÉ]** Recette G1-D, 3 000 pas, évaluation sur 30 placements jamais vus. L'expert réussit en 151 pas médians.
+
+| Démos | Réglage | Réussites | Pas médian |
+|---|---|---|---|
+| 50 | chunk entier | 27 / 30 | 149 |
+| 50 | 10 pas + préfixe de 20 | 25 / 30 | 154 |
+
+La pièce Novares, avec sa prise verticale peinte et sa variance de ±3 cm et ±20°, s'apprend aussi bien que le cube. Le modèle atteint la **vitesse de l'expert**. Pour le cube, il restait environ 20 % plus lent, à 151 pas contre 127. Les résultats à 25 et 10 démos sont en cours.
+
 ### Empilement de deux pièces
 
 **[VÉRIFIÉ]** Les pièces s'emboîtent en sim. La position a été trouvée par recherche géométrique, en prenant la hauteur minimale sans interpénétration :

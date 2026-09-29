@@ -57,7 +57,7 @@ Par ordre de priorité. Cocher au fur et à mesure.
 - [ ] **Installer le poste de démo** : une table à environ 0,87 m et le buste penché d'environ 0.166 rad.
 - [x] **Valider la chaîne complète en sim** : 150 démos expertes de la tâche cube, fine-tuning de 3 000 pas, puis **23 prises sur 30** positions jamais vues. Le zero-shot faisait 0 sur 20. Voir « Validation en sim » plus bas.
 - [x] **Améliorer la vitesse et réduire le nombre de démos, en sim** : chunks entiers, 28/30 en 151 pas au lieu de 222. Real-time chunking ajouté, avec raccord doux : 25/30 en 151 pas en replanifiant tous les 10 pas. **10 démos suffisent** pour 25/30, et 25 démos donnent 30/30.
-- [ ] **Tâche Novares en sim** : prise peinte de mpc_any, 50 démos prêtes. Reste le fine-tuning et l'évaluation.
+- [ ] **Tâche Novares en sim** : prise peinte de mpc_any. 50 démos : **27/30**, à la vitesse de l'expert. 25 et 10 démos en cours.
 - [ ] **Enregistrer, puis fine-tuner** : la recette est prête et testée sur `mon_test`. Elle tourne à environ 1,7 s par pas sur la RTX 5090. Le correctif du projecteur gelé est **vérifié** : 1 397 M paramètres entraînables, soit la tête DiT plus les 6,87 M du projecteur. Reste à enregistrer de vraies démos iso, voir les points précédents.
 
 ---
@@ -346,7 +346,17 @@ MUJOCO_GL=egl $SIMPY sim/wla_client.py --scene novares --instruction "pick up th
 ```
 
 - ⚠ **Conversion gourmande en mémoire vive**, à cause de l'encodage vidéo AV1. Ne pas la lancer pendant un entraînement, qui garde son optimiseur en mémoire vive.
-- **État** : démos et dataset prêts. Fine-tuning et évaluation en attente d'un créneau GPU.
+**Résultats**, sur 30 placements de la pièce jamais vus. L'expert réussit en **151 pas** médians.
+
+| Démos | Réglage d'exécution | Réussites | Pas médian jusqu'à la réussite |
+|---|---|---|---|
+| 50 | chunk entier | **27 / 30** | **149** |
+| 50 | 10 pas + préfixe de 20 | 25 / 30 | 154 |
+| 25 | — | en cours | |
+| 10 | — | à venir | |
+
+- **Tâche plus dure** : elle s'apprend aussi bien que le cube. Avec 50 démos, le modèle réussit 9 fois sur 10, **à la vitesse de l'expert**.
+- **File automatique** : `playground/queue_novares.sh` enchaîne entraînement et évaluation pour 50, 25 puis 10 démos. Journal : `playground/queue_logs/queue.log`.
 
 ### Fine-tuning
 
