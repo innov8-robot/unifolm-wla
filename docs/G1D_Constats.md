@@ -182,6 +182,56 @@ Les images sont redimensionnées en 336×448 (hauteur × largeur). Source : [uni
 
 ---
 
+## 7 bis. Sim MuJoCo du G1-D : état et écarts avec WLA
+
+**[VÉRIFIÉ]** Le smoke test passe entièrement, lancé le 29 septembre 2026 dans l'environnement conda `unitree_lerobot` avec MuJoCo 3.10 et Pinocchio 3.9 :
+
+```
+MUJOCO_GL=egl python sim/smoke.py    # depuis la racine du dépôt
+15/15 vérifications passées
+```
+
+Tenue sous gravité, IK aller-retour, pose de travail, suivi cartésien à 30 Hz, refus d'une cible hors d'atteinte, pinces, sauvegarde et restauration d'état et rendu des trois caméras fonctionnent.
+
+### Ce qui colle déjà avec WLA
+
+- **Cadence** : contrôle à 30 Hz, comme les chunks WLA de 30 pas par seconde.
+- **Interface cartésienne** : `track_tcp` prend une pose 4×4 absolue. C'est exactement ce que le serveur WLA renvoie après composition.
+- **Format d'image** : les rendus en 640×480 ont le même rapport 4:3 que l'entrée WLA en 448×336.
+- **Trois vues** : une vue haute et deux vues de poignet, comme les trois rôles WLA.
+
+### Écarts à combler pour brancher WLA
+
+| Point | Sim | WLA attend | État |
+|---|---|---|---|
+| Repère des poses | monde MuJoCo | repère base `B` du G1, au bassin | **[INCONNU]** transformation monde → `B` à définir |
+| Point effecteur | `gripper_base_link` + 10,5 cm le long des doigts | pose `ee_pose_gripper_base` du G1 | **[INCONNU]** quel point et quels axes Unitree utilise |
+| Caméra haute | `torso_rgbd`, monoculaire sur le torse, fovy 65° | vue gauche rectifiée de la stéréo de tête | **[INCONNU]** caméra réelle de notre G1-D |
+| Caméras poignet | fovy 110° | intrinsèques non lues | **[INCONNU]** |
+| Pince | fermeture de 0 à 1 | valeur Dex1 brute, de 0 à 5,5 environ, médiane 3,3 | **[INCONNU]** sens d'ouverture |
+| Base roulante | aucun actionneur de roue | commande de base en vitesses | non testable en sim |
+| Colonne | verrouillée en butée basse | hauteur du bassin G1 autour de 0,74 m | correspondance à définir |
+
+**Pourquoi le point effecteur compte.** Les actions sont relatives à l'ancre. Un décalage fixe du point effecteur, ou une rotation fixe de ses axes, change les translations relatives dès que la pince tourne. Il faut utiliser le même point et les mêmes axes que le G1 des datasets.
+
+### Indice sur le repère base [INFÉRÉ]
+
+Dans les statistiques Dex1, la médiane de la pose effecteur gauche vaut environ x = 0,33 m, y = 0,15 m et z = 0,14 m dans le repère base. La hauteur médiane du bassin G1 vaut 0,74 m. La main de travail du G1 est donc à environ 0,88 m du sol.
+
+Dans la sim, la pose de travail gauche est à x = 0,35 m, y = 0,15 m et z = 0,90 m dans le repère monde. Les deux sont très proches. Un repère `B` placé à environ 0,76 m au-dessus du sol, sous le torse, mettrait nos poses dans la même distribution que le G1. À confirmer avec la position du torse dans le monde MuJoCo et avec l'URDF du G1.
+
+### Prochaine étape proposée
+
+Écrire un client sim qui joue le rôle du robot pour le serveur WLA :
+
+1. rendre les trois vues et lire les poses effecteur et les pinces ;
+2. les exprimer dans `B` et les envoyer au serveur ;
+3. appliquer le chunk reçu avec `track_tcp` et `set_gripper`, pas à pas à 30 Hz.
+
+Cela permet un test zero-shot en boucle fermée sans robot, dès que les poids sont téléchargés.
+
+---
+
 ## 8. État des questions ouvertes du briefing
 
 | # | Question | État |
@@ -200,3 +250,6 @@ Nouvelles questions :
 | 7 | Le gel par sous-modules libère-t-il bien le projecteur seul ? | Lancer un fine-tuning court et lire la liste des paramètres entraînables. |
 | 8 | Correspondance entre la hauteur G1 et la position de la colonne G1-D | Comparer les URDF à hauteur de caméra égale. |
 | 9 | Écart commande/mesure dans les données officielles | Charger un épisode Dex1 et comparer les deux poses à t. |
+| 10 | Point et axes de l'effecteur G1 dans les datasets | URDF du G1 Dex1 et code d'enregistrement Unitree. |
+| 11 | Sens et unité de la pince Dex1 dans les datasets | Tracer la pince sur un épisode avec prise. |
+| 12 | Caméra haute réelle du G1-D : stéréo de tête ou RGBD sur le torse ? | Demander à l'utilisateur. |
