@@ -111,6 +111,10 @@ class DatasetSourceConfig:
     # `_load_stats` short-circuits to load those two files verbatim and skips
     # all per-task / cross-variant merging.
     precollected_stats_path: Optional[str] = None
+    # Conditionnement par l'avantage (ajout G1-D, RECAP) : colonne par frame (1 bon, 0 mauvais) et
+    # probabilité de l'omettre à l'entraînement (le modèle reste utilisable sans condition).
+    advantage_key: Optional[str] = None
+    advantage_dropout: float = 0.0
 
     def get_all_selected_keys(self) -> list[str]:
         """Get all parquet/video keys to load."""
@@ -118,6 +122,8 @@ class DatasetSourceConfig:
         keys.extend(ik.key for ik in self.image_keys)
         keys.extend(self.action_keys.get_all_keys())
         keys.extend(self.state_keys.get_all_keys())
+        if self.advantage_key:
+            keys.append(self.advantage_key)
         return keys
 
 
@@ -189,6 +195,8 @@ def _build_dataset_config(raw: dict, data_base: str = "") -> DatasetSourceConfig
         relative_stats_key_map=_from_dict(RelativeStatsKeyMap, raw.get("relative_stats_key_map", {})),
         base_command_dims=raw.get("base_command_dims"),
         precollected_stats_path=raw.get("precollected_stats_path"),
+        advantage_key=raw.get("advantage_key"),
+        advantage_dropout=float(raw.get("advantage_dropout", 0.0)),
     )
 
 

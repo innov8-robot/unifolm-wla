@@ -648,3 +648,52 @@ Le support est poussé de 7 à 13 mm en médiane.
 
 **[INFÉRÉ]** L'emboîtement en sim repose aussi sur la décomposition convexe de la pièce en 90 morceaux. Il peut différer de l'emboîtement réel.
 
+---
+
+## 15. Brique RECAP / Delta-0 : amélioration par essais et corrections (29 septembre 2026)
+
+Principe publié par Physical Intelligence, π*0.6 avec RECAP, fin 2025, et repris par Delta-0 :
+1. une politique par imitation joue seule ;
+2. un opérateur corrige quand elle se trompe ;
+3. un modèle de valeur note chaque morceau d'action selon qu'il rapproche du but ;
+4. on réentraîne la politique conditionnée par cette note, « bonne » ou « mauvaise » action ;
+5. à l'exécution, on lui demande de « bonnes » actions.
+
+### Ce qui est implémenté
+
+**[VÉRIFIÉ sans GPU]** Tout est testé : prompt, dataloader, conversion, étiquetage, faux serveur, smoke test à 22/22.
+
+| Brique | Fichier | Rôle |
+|---|---|---|
+| Conditionnement par l'avantage | `QWen3.build_qwenvl_inputs`, `QwenMMDiT` | Ligne `Advantage: positive|negative` dans le prompt, **seulement** si l'exemple en porte une. Sinon, le prompt est identique à l'original |
+| Données | `config.py`, `single_source_dataset.py`, `dataloader.py` | `advantage_key` et `advantage_dropout` dans la config de données. Une frame vaut 1 si bonne, 0 si mauvaise, −1 si la condition est omise |
+| Serveur | `action_server_wbc_msgpack_unitree.py` | `--advantage positive`, ou `obs["advantage"]` par requête |
+| Rollouts avec opérateur | `sim/recap_rollouts.py` | La politique joue. L'opérateur simulé, l'expert rejoué depuis l'état courant, prend la main si l'objet est poussé de plus de 3 cm ou si la tâche n'est pas réussie au pas 220. Chaque pas porte `intervention` à 0 ou 1 |
+| Modèle de valeur et étiquetage | `g1d_wla/recap.py` | ResNet18 gelé sur la tête et le poignet droit, plus l'état, puis un MLP qui prédit les pas restants avant la réussite ; un échec vaut le maximum. Un morceau de 30 pas est positif s'il gagne au moins 0,5 × 30 pas restants. Les corrections sont toujours positives |
+| Conversion | `g1d_wla/convert_teleop.py` | Colonnes `advantage` et `intervention`. Les pas non étiquetés, comme les démos, valent 1 |
+| Écriture d'épisode | `sim/sim_episode_writer.py` | Partagé par les démos et les rollouts. `info.success_step` et `info.outcome` sont ajoutés |
+| Tâche de test | `sim/sim_tasks.py`, tâche `novares_shift` | Pièce 4 à 7 cm plus loin que la zone d'entraînement : c'est l'équivalent de la « cuisine inversée » de Delta-0 |
+
+### Expérience préparée
+
+`sim/experiments/queue_recap.sh` enchaîne ces étapes, et démarre seule après la file Novares :
+1. **Référence** : la politique à 10 démos, évaluée dans la zone décalée et dans la zone d'origine.
+2. **Rollouts** : 40 épisodes dans la zone décalée, avec l'opérateur simulé.
+3. **Modèle de valeur et étiquetage.**
+4. **Fine-tuning conditionné** : depuis le modèle Base, sur les démos et les rollouts, avec 30 % de condition omise.
+5. **Évaluation** avec « Advantage: positive ».
+6. **Témoin** : les mêmes données sans conditionnement.
+
+La comparaison entre les étapes 5 et 6 dira si le gain vient du conditionnement par l'avantage ou seulement des données en plus.
+
+### Pour le vrai robot
+
+**[À FAIRE]**
+- **Correction en delta dans xr_teleoperate** : pendant que la politique joue, un décalage donné par la manette s'ajoute à la pose cible avant l'IK. Le pas est alors enregistré avec `intervention` = 1.
+- **Signal de réussite** : un bouton de l'opérateur qui écrit `info.success_step` et `info.outcome`.
+
+**[INCONNU]** Plusieurs choix restent ouverts, et le blog de Delta ne les donne pas non plus :
+- le seuil d'étiquetage ;
+- la taille du jeu de rollouts ;
+- le nombre d'itérations.
+

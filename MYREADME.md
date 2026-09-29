@@ -58,6 +58,7 @@ Par ordre de priorité. Cocher au fur et à mesure.
 - [x] **Valider la chaîne complète en sim** : 150 démos expertes de la tâche cube, fine-tuning de 3 000 pas, puis **23 prises sur 30** positions jamais vues. Le zero-shot faisait 0 sur 20. Voir « Validation en sim » plus bas.
 - [x] **Améliorer la vitesse et réduire le nombre de démos, en sim** : chunks entiers, 28/30 en 151 pas au lieu de 222. Real-time chunking ajouté, avec raccord doux : 25/30 en 151 pas en replanifiant tous les 10 pas. **10 démos suffisent** pour 25/30, et 25 démos donnent 30/30.
 - [ ] **Tâche Novares en sim** : prise peinte de mpc_any. 50 démos : **27/30**, à la vitesse de l'expert. 25 et 10 démos en cours.
+- [ ] **Boucle RECAP / Delta-0 (amélioration par essais et corrections)** : brique implémentée et testée sans GPU. Expérience en sim en file d'attente (`sim/experiments/queue_recap.sh`, journal `playground/queue_logs/recap.log`). Voir section 15 des constats.
 - [ ] **Enregistrer, puis fine-tuner** : la recette est prête et testée sur `mon_test`. Elle tourne à environ 1,7 s par pas sur la RTX 5090. Le correctif du projecteur gelé est **vérifié** : 1 397 M paramètres entraînables, soit la tête DiT plus les 6,87 M du projecteur. Reste à enregistrer de vraies démos iso, voir les points précédents.
 
 ---
@@ -352,7 +353,8 @@ MUJOCO_GL=egl $SIMPY sim/wla_client.py --scene novares --instruction "pick up th
 |---|---|---|---|
 | 50 | chunk entier | **27 / 30** | **149** |
 | 50 | 10 pas + préfixe de 20 | 25 / 30 | 154 |
-| 25 | — | en cours | |
+| 25 | chunk entier | 22 / 30 | 146 |
+| 25 | 10 pas + préfixe de 20 | 21 / 30 | 151 |
 | 10 | — | à venir | |
 
 - **Tâche plus dure** : elle s'apprend aussi bien que le cube. Avec 50 démos, le modèle réussit 9 fois sur 10, **à la vitesse de l'expert**.

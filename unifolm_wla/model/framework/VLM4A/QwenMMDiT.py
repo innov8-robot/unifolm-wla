@@ -63,6 +63,10 @@ def _adapt_multi_source_batch(batch: dict) -> list:
             "arm_type": batch["arm_type"][i],
             "robot_type": batch["robot_type"][i],
         })
+        # avantage (ajout G1-D, RECAP) : 1 -> "positive", 0 -> "negative", absent/-1 -> pas de ligne
+        if "advantage" in batch:
+            a = float(batch["advantage"][i])
+            examples[-1]["advantage"] = "positive" if a >= 0.5 else ("negative" if a >= 0 else None)
     return examples
 
 
@@ -247,6 +251,7 @@ class Qwen_MMDiT(baseframework):
             images=batch_images, instructions=instructions, solutions=solutions,
             image_roles=[e.get("image_roles") for e in examples],
             arm_types=[e.get("arm_type") for e in examples],
+            advantages=[e.get("advantage") for e in examples],
         )
         backbone_attention_mask = qwen_inputs.get("attention_mask", None)
         assistant_mask = qwen_inputs.pop("assistant_mask", None)
@@ -338,6 +343,7 @@ class Qwen_MMDiT(baseframework):
             images=batch_images, instructions=instructions,
             image_roles=[e.get("image_roles") for e in examples],
             arm_types=[e.get("arm_type") for e in examples],
+            advantages=[e.get("advantage") for e in examples],
             add_generation_prompt=False,
         )
         backbone_attention_mask = qwen_inputs.get("attention_mask", None)

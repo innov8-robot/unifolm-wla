@@ -85,6 +85,8 @@ async def run_chunks(ws, packer, sim, args, frames, max_steps, done=None) -> tup
     entries, steps, first_done, prev_exec = [], 0, None, None
     while steps < max_steps and not (first_done is not None and args.stop_on_success):
         obs, _ = build_obs(sim, args.instruction, args.unnorm_key)
+        if getattr(args, "advantage", None):
+            obs["advantage"] = args.advantage
         if args.rtc_prefix > 0 and prev_exec is not None:
             # real-time chunking : imposer la suite du chunk précédent (voir le serveur)
             obs["rtc_executed"], obs["rtc_prefix"] = prev_exec, args.rtc_prefix
@@ -138,7 +140,7 @@ async def run(args) -> dict:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     task = None
-    if args.scene in ("cube", "novares"):
+    if args.scene in ("cube", "novares", "novares_shift"):
         from sim_tasks import get_task
         task = get_task(args.scene)
     cube = task is not None                    # tâche avec objet à soulever et réussite mesurée
@@ -192,13 +194,14 @@ def main() -> None:
     ap.add_argument("--instruction", default="pick up the black part and put it in the box")
     ap.add_argument("--unnorm_key", default="UnifoLM_G1_Dex1")
     ap.add_argument("--head-view", dest="head_view", choices=["rec", "raw"], default="rec")
-    ap.add_argument("--scene", choices=["piece", "cube", "novares"], default="piece",
+    ap.add_argument("--scene", choices=["piece", "cube", "novares", "novares_shift"], default="piece",
                     help="piece : scène d'origine sans mesure ; cube / novares : tâches avec placement "
                          "aléatoire et taux de réussite (novares : pièce non versionnée)")
     ap.add_argument("--episodes", type=int, default=1)
     ap.add_argument("--max-steps", dest="max_steps", type=int, default=200, help="pas de 30 Hz par épisode")
     ap.add_argument("--seed", type=int, default=7, help="tirage des cubes (les démos utilisent 1000)")
     ap.add_argument("--videos", type=int, default=3, help="nombre d'épisodes filmés")
+    ap.add_argument("--advantage", default=None, help="condition envoyée au serveur (modèle RECAP), ex. positive")
     ap.add_argument("--rtc-prefix", dest="rtc_prefix", type=int, default=0,
                     help="real-time chunking : pas du chunk précédent imposés en tête du suivant (0 = off). "
                          "Il faut --exec-steps + --rtc-prefix <= 30")

@@ -120,6 +120,8 @@ def collate_fn(batch: list[dict]) -> dict:
     result["task"] = [b["task"] for b in batch]
     result["arm_type"] = [b["arm_type"] for b in batch]
     result["robot_type"] = [b["robot_type"] for b in batch]
+    if "advantage" in batch[0]:          # conditionnement par l'avantage (ajout G1-D, RECAP)
+        result["advantage"] = torch.tensor([b.get("advantage", -1.0) for b in batch], dtype=torch.float32)
 
     return result
 

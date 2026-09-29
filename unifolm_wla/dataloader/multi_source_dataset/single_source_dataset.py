@@ -527,7 +527,18 @@ class SingleSourceDataset(Dataset):
             "task": task,
             "arm_type": self.config.arm_type,
             "robot_type": self.config.robot_type,
+            **self._advantage_field(item),
         }
+
+    def _advantage_field(self, item: dict) -> dict:
+        """``{"advantage": 1.|0.|-1.}`` si ``advantage_key`` est configurée (ajout G1-D, RECAP) ;
+        -1 = condition omise (absente, ou tirée par ``advantage_dropout``). Sinon : rien."""
+        key = self.config.advantage_key
+        if not key:
+            return {}
+        if key not in item or random.random() < self.config.advantage_dropout:
+            return {"advantage": -1.0}
+        return {"advantage": float(self._to_numpy(item[key]).ravel()[0])}
 
     def _to_numpy(self, val) -> np.ndarray:
         """Convert torch tensor or scalar to numpy array, ensuring at least 1D."""

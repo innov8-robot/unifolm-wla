@@ -60,9 +60,12 @@ def _vec(n: int, names: list[str]) -> dict:
     return {"dtype": "float32", "shape": (n,), "names": names}
 
 
-def build_features(image_keys: dict) -> dict:
+def build_features(image_keys: dict, with_advantage: bool = False) -> dict:
     img = {"dtype": "video", "shape": IMG_SHAPE, "names": ["height", "width", "channels"]}
     f = {k: dict(img) for k in image_keys.values()}
+    if with_advantage:        # RECAP : 1 = bon morceau d'action, 0 = mauvais ; 1 = pas corrigé par l'opérateur
+        f["advantage"] = _vec(1, ["advantage"])
+        f["intervention"] = _vec(1, ["intervention"])
     for kind in ("observation.state", "action"):
         for s in SIDES:
             f[f"{kind}.{s}_arm"] = _vec(7, ARM)
@@ -126,6 +129,11 @@ def main() -> None:
                     help="hauteur de bassin G1 équivalente pour action.base_command (défaut : médiane G1)")
     ap.add_argument("--episodes", type=int, nargs="*", default=None, help="indices d'épisodes à convertir")
     ap.add_argument("--vcodec", default="libsvtav1")
+    ap.add_argument("--advantage", choices=["auto", "on", "off"], default="auto",
+                    help="colonnes advantage/intervention (RECAP) : auto = si un épisode porte step['advantage'] ; "
+                         "les pas sans étiquette valent --default-advantage")
+    ap.add_argument("--default-advantage", dest="default_advantage", type=float, default=1.0,
+                    help="avantage des pas non étiquetés (1 : démos expertes = bonnes actions)")
     ap.add_argument("--overwrite", action="store_true")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -152,7 +160,11 @@ def main() -> None:
         raise SystemExit(f"{n_img} images par pas : dispositions connues {sorted(IMAGE_LAYOUTS)}")
     image_keys = IMAGE_LAYOUTS[n_img]
     log.info("%d images par pas : %s", n_img, list(image_keys.values()))
-    ds = LeRobotDataset.create(repo_id=args.repo_id, fps=FPS, features=build_features(image_keys), root=args.out_dir,
+    with_adv = args.advantage == "on" or (
+        args.advantage == "auto" and any("advantage" in load_episode(p)["steps"][0] for p in ep_dirs))
+    if with_adv:
+        log.info("colonnes advantage / intervention écrites (défaut %.1f)", args.default_advantage)
+    ds = LeRobotDataset.create(repo_id=args.repo_id, fps=FPS, features=build_features(image_keys, with_adv), root=args.out_dir,
                                robot_type="unitree_g1d", use_videos=True, vcodec=args.vcodec,
                                image_writer_threads=4)
     for n, ep_dir in enumerate(ep_dirs):
@@ -169,6 +181,9 @@ def main() -> None:
                 if img.shape != IMG_SHAPE:
                     raise ValueError(f"{ep_dir.name} {ck} : {img.shape}, attendu {IMG_SHAPE}")
                 frame[fk_name] = img
+            if with_adv:
+                frame["advantage"] = np.array([st.get("advantage", args.default_advantage)], np.float32)
+                frame["intervention"] = np.array([float(st.get("intervention", 0))], np.float32)
             frame["task"] = task
             ds.add_frame(frame)
         ds.save_episode()

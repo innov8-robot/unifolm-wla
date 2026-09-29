@@ -244,7 +244,7 @@ class _QWen3_VL_Interface(nn.Module):
         return generation_output
 
     def build_qwenvl_inputs(self, images, instructions, solutions=None,
-                            image_roles=None, arm_types=None,
+                            image_roles=None, arm_types=None, advantages=None,
                             add_generation_prompt=None, **kwargs):
         """
         Build model inputs from raw data (images + instructions + optional solutions).
@@ -287,13 +287,18 @@ class _QWen3_VL_Interface(nn.Module):
                     content.append({"type": "image", "image": img})
 
                 arm_type = arm_types[idx] if arm_types is not None else None
+                # Conditionnement par l'avantage (ajout G1-D, à la RECAP) : ligne « Advantage: »
+                # seulement si l'exemple en porte une ; sinon le prompt est IDENTIQUE à l'origine.
+                adv = advantages[idx] if advantages is not None else None
                 control_mode = (
                     CONTROL_MODE_WITH_LOW if arm_type == "dual_with_legs" else CONTROL_MODE_ARMS_ONLY
                 )
                 state_block = ROBOT_STATE_IMPLICIT_STATS_TOKEN + ROBOT_STATE_TOKEN
                 lead = "\n" if content else ""
+                adv_line = f"Advantage: {adv}\n" if adv else ""
                 trailing = (
                     f"{lead}Task: {instruction}\n"
+                    f"{adv_line}"
                     f"State: {state_block}\n"
                     f"{control_mode}"
                 )

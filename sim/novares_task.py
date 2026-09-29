@@ -134,10 +134,11 @@ def grasp_candidates(sim: G1DSim, g: NovaresGrasp, side: str = "right") -> list:
     return [T for _, T in out]
 
 
-def sample_piece(sim: G1DSim, rng: np.random.Generator, pose0: np.ndarray) -> None:
+def sample_piece(sim: G1DSim, rng: np.random.Generator, pose0: np.ndarray,
+                 dx_range=DX, dy_range=DY, dyaw_range=DYAW) -> None:
     """Replace la pièce : pose stable ``pose0`` (monde) + décalage (x, y) et lacet dans la base."""
     B = sim.base_pose_wla()
-    dx, dy, dyaw = rng.uniform(*DX), rng.uniform(*DY), rng.uniform(*DYAW)
+    dx, dy, dyaw = rng.uniform(*dx_range), rng.uniform(*dy_range), rng.uniform(*dyaw_range)
     Rz = Rotation.from_euler("z", dyaw).as_matrix()
     T = pose0.copy()
     T[:3, :3] = Rz @ pose0[:3, :3]

@@ -24,52 +24,28 @@ import time
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from g1d_sim import SIDES, G1DSim  # noqa: E402
+from g1d_sim import G1DSim  # noqa: E402
 from sim_tasks import get_task  # noqa: E402
-from wla_client import closure_to_dex1  # noqa: E402
-
-TORSO_PITCH_INDEX = 13
-ARM_BODY_SLICE = {"left": slice(15, 22), "right": slice(22, 29)}
-VIEWS = ("head_left", "cam_wrist_left", "cam_wrist_right")
+from sim_episode_writer import SimEpisodeWriter  # noqa: E402
 
 
 def record_episode(sim: G1DSim, rng: np.random.Generator, ep_dir: Path, jpeg_quality: int, task) -> dict:
-    colors_dir = ep_dir / "colors"
-    colors_dir.mkdir(parents=True)
-    steps = []
+    w = SimEpisodeWriter(sim, ep_dir, jpeg_quality)
+    z0 = sim.object_pose(task.body)[2, 3]
+    first = {"t": None}
 
     def on_step(t: int, closure_cmd: dict) -> None:
-        imgs = sim.render_all()
-        colors = {}
-        for k, view in enumerate(VIEWS):
-            name = f"colors/{t:06d}_color_{k}.jpg"
-            Image.fromarray(imgs[view]).save(ep_dir / name, quality=jpeg_quality)
-            colors[f"color_{k}"] = name
-        body = np.zeros(35)
-        body[TORSO_PITCH_INDEX] = sim.torso_pitch()
-        states, actions = {}, {}
-        for s in SIDES:
-            q = sim.arm_q(s)
-            body[ARM_BODY_SLICE[s]] = q
-            states[f"{s}_arm"] = {"qpos": q.tolist(), "qvel": [], "torque": []}
-            actions[f"{s}_arm"] = {"qpos": sim.d.ctrl[sim._arm_act[s]].tolist(), "qvel": [], "torque": []}
-            states[f"{s}_ee"] = {"qpos": [closure_to_dex1(sim.gripper(s))], "qvel": [], "torque": []}
-            actions[f"{s}_ee"] = {"qpos": [closure_to_dex1(closure_cmd[s])], "qvel": [], "torque": []}
-        states["body"] = {"qpos": body.tolist()}
-        actions["body"] = {"qpos": [0.0, 0.0, 0.0]}
-        steps.append({"idx": t, "colors": colors, "depths": {}, "states": states, "actions": actions,
-                      "tactiles": {}, "audios": {}, "sim_state": ""})
+        w.record(t, closure_cmd)
+        if first["t"] is None and sim.object_pose(task.body)[2, 3] - z0 > task.lift_success:
+            first["t"] = t                     # pas de réussite : utile au modèle de valeur (RECAP)
 
     res = task.expert(sim, rng, on_step=on_step)
-    doc = {"info": {"version": "1.0.0", "author": "g1d_sim", "image": {"width": 640, "height": 480, "fps": 30.0},
-                    "source": "sim/record_sim_demos.py"},
-           "text": {"goal": task.instruction, "desc": f"expert scripté, sim MuJoCo G1-D, tâche {task.name}", "steps": ""},
-           "data": steps}
-    (ep_dir / "data.json").write_text(json.dumps(doc))
+    res["success_step"] = first["t"]
+    w.save(task.instruction, f"expert scripté, sim MuJoCo G1-D, tâche {task.name}", "sim/record_sim_demos.py",
+           {"success_step": first["t"], "outcome": "success" if res["success"] else "failure"})
     return res
 
 

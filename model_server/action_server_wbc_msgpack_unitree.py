@@ -320,6 +320,11 @@ class ActionServerWBCMsgpack:
             "arm_type": "dual_with_legs",
             "robot_type": "unitree",
         }
+        # Conditionnement par l'avantage (ajout G1-D, RECAP) : obs["advantage"] > --advantage ;
+        # rien par défaut (prompt d'origine).
+        adv = obs.get("advantage", self.args.advantage)
+        if adv:
+            example["advantage"] = str(adv)
         prefix, weights = self._rtc_prefix(obs, unnorm_key, state_unnorm)
         if prefix is not None:
             example["action_prefix"] = prefix
@@ -474,6 +479,9 @@ def main():
                         help="Dataset key for norm stats (auto-detected if single dataset)")
     parser.add_argument("--use_bf16", action="store_true", default=True)
     parser.add_argument("--image_size", type=int, nargs=2, default=[320, 448], metavar=("H", "W"))
+    parser.add_argument("--advantage", default=None, choices=[None, "positive", "negative"],
+                        help="Modèle entraîné avec conditionnement par l'avantage (RECAP) : ajoute la ligne "
+                             "« Advantage: ... » au prompt. Utiliser « positive » à l'exécution.")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8600)
     parser.add_argument("--debug_save_dir", default=None,
