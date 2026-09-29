@@ -511,12 +511,14 @@
             </body>
             <!-- Caméra stéréo de tête stock, œil GAUCHE RECTIFIÉ = entrée "head_left" de WLA
                  (observation.images.head_stereo_left_rec, 640x480, 30 fps dans les datasets G1 Dex1).
-                 Orientation et position = pose d435 du G1 dans torso_link, lue dans les datasets :
-                 xyz (0.0576, 0.0175, 0.4299), tangage 0.8308 rad (constante sur tout un épisode).
+                 Orientation et position = pose d435 du G1 (URDF officiel et datasets, constante),
+                 xyz (0.0576, 0.0175, 0.4299) dans le torso_link du G1, tangage 0.8308 rad.
+                 La tête du G1-D est montée 1 cm plus bas sur torso_link (-0.054 contre -0.044) :
+                 caméra à z = 0.4199 pour rester à la même place DANS la tête.
                  + décalage de l'œil gauche de 0.074 m le long de y et fovy 75° : ESTIMÉS en
                  projetant les poses effecteur enregistrées sur les images (erreur ~12-18 px).
-                 Voir docs/G1D_Constats.md. Hypothèse : torso_link du G1-D = torso_link du G1. -->
-            <camera name="head_left_cam" pos="0.0576 0.0915 0.4299" xyaxes="0.000000 -1.000000 0.000000 0.738455 0.000000 0.674302" fovy="75.0" />
+                 Voir docs/G1D_Constats.md. -->
+            <camera name="head_left_cam" pos="0.0576 0.0915 0.4199" xyaxes="0.000000 -1.000000 0.000000 0.738455 0.000000 0.674302" fovy="75.0" />
           </body>
         </body>
       </body>
@@ -524,13 +526,16 @@
     <geom name="floor" type="plane" size="4 4 0.05" material="grid" />
     <light pos="1.5 1 2.5" dir="-0.5 -0.3 -1" diffuse="0.8 0.8 0.8" />
     <light pos="-1.5 -1 2" dir="0.5 0.3 -1" diffuse="0.4 0.4 0.4" />
-    <geom name="table" type="box" rgba="0.55 0.42 0.28 1" size="0.2 0.4 0.37" pos="0.5 -0.1 0.37" />
-    <geom name="carton_fond" type="box" rgba="0.76 0.6 0.42 1" size="0.10600000000000001 0.096 0.006" pos="0.32 -0.36 0.746" />
-    <geom name="carton_mur0" type="box" rgba="0.76 0.6 0.42 1" size="0.006 0.096 0.035" pos="0.42600000000000005 -0.36 0.787" />
-    <geom name="carton_mur1" type="box" rgba="0.76 0.6 0.42 1" size="0.006 0.096 0.035" pos="0.214 -0.36 0.787" />
-    <geom name="carton_mur2" type="box" rgba="0.76 0.6 0.42 1" size="0.10600000000000001 0.006 0.035" pos="0.32 -0.264 0.787" />
-    <geom name="carton_mur3" type="box" rgba="0.76 0.6 0.42 1" size="0.10600000000000001 0.006 0.035" pos="0.32 -0.45599999999999996 0.787" />
-    <body name="piece" pos="0.34 -0.08 0.7587" quat="0.5801 -0.8119 -0.0624 -0.0187">
+    <!-- Table remontée de 0.13 m (dessus à 0.87 m au lieu de 0.74) : dessus ~0.07 m AU-DESSUS du
+         repère base WLA, comme la table des datasets G1 Dex1 par rapport au bassin du G1 (estimé
+         depuis la hauteur des prises, à ±3 cm). Carton et pièce remontés d'autant. -->
+    <geom name="table" type="box" rgba="0.55 0.42 0.28 1" size="0.2 0.4 0.435" pos="0.5 -0.1 0.435" />
+    <geom name="carton_fond" type="box" rgba="0.76 0.6 0.42 1" size="0.10600000000000001 0.096 0.006" pos="0.32 -0.36 0.8760" />
+    <geom name="carton_mur0" type="box" rgba="0.76 0.6 0.42 1" size="0.006 0.096 0.035" pos="0.426 -0.36 0.9170" />
+    <geom name="carton_mur1" type="box" rgba="0.76 0.6 0.42 1" size="0.006 0.096 0.035" pos="0.214 -0.36 0.9170" />
+    <geom name="carton_mur2" type="box" rgba="0.76 0.6 0.42 1" size="0.10600000000000001 0.006 0.035" pos="0.32 -0.264 0.9170" />
+    <geom name="carton_mur3" type="box" rgba="0.76 0.6 0.42 1" size="0.10600000000000001 0.006 0.035" pos="0.32 -0.456 0.9170" />
+    <body name="piece" pos="0.34 -0.08 0.8887" quat="0.5801 -0.8119 -0.0624 -0.0187">
       <freejoint name="piece_free" />
       <geom name="piece_visu" type="mesh" mesh="piece" rgba="0.07 0.07 0.08 1" contype="0" conaffinity="0" density="614.0" />
       <geom name="piece" type="mesh" mesh="Novares_Piece1_centered_part00" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />

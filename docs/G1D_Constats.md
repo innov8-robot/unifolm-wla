@@ -146,8 +146,8 @@ Les minimums et maximums bruts contiennent des valeurs aberrantes, jusqu'à ±11
 - **vy** : un châssis différentiel ne peut pas glisser de côté. Ignorer la valeur prédite et enregistrer vy = 0 dans nos démos.
 - **height** : c'est la hauteur du bassin du G1 debout ou accroupi, pas une position de colonne. Définir une correspondance fixe entre les deux, telle qu'une hauteur de 0,74 m donne la même hauteur de caméra qu'un G1 debout. À calculer depuis les deux URDF.
 - **vx** : notre châssis atteint 1,5 m/s, mais le modèle n'a jamais vu plus de 0,67 m/s. Brider la vitesse au début.
-- **Taille** : les 3 articulations de taille du G1 n'existent pas sur le G1-D. Masquer ce slot dans l'état et ignorer la valeur prédite.
-- **Jambes** : masquer les slots jambes dans l'état et ignorer leurs prédictions.
+- **Taille** : ~~masquer ce slot~~ **corrigé, voir la section 9** : envoyer [0, 0, tangage du buste G1-D], slot valide. Ignorer les prédictions de lacet et de roulis.
+- **Jambes** : ~~masquer les slots jambes~~ **corrigé, voir la section 9** : envoyer la posture debout du G1, slots valides. Ignorer leurs prédictions.
 
 ---
 
@@ -205,7 +205,7 @@ L'utilisateur a confirmé que le G1-D utilise la **caméra stéréo de tête sto
 
 **[VÉRIFIÉ]** La pose `d435` dans `torso_link` est **constante** sur tout un épisode : xyz (0.0576, 0.0175, 0.4299) et tangage 0.8308 rad. C'est un montage fixe.
 
-**[VÉRIFIÉ]** Le G1 manipule le **buste penché** de 0.136 rad par rapport au bassin, en médiane. La caméra plonge alors de 55°. Buste droit, elle ne plonge que de 49°.
+**[VÉRIFIÉ]** Le G1 manipule le **buste penché** par rapport au bassin. Médiane globale des statistiques d'entraînement : 0.166 rad. Selon la tâche : 0.127 rad pour Stack_Block et 0.182 rad pour Wipe_Table. Buste droit, la caméra plongerait environ 10° de moins.
 
 **[INFÉRÉ]** Intrinsèques de l'œil gauche rectifié, estimées en projetant les poses effecteur enregistrées sur 7 images :
 
@@ -222,39 +222,28 @@ Ce qui a été fait dans la sim :
 
 - caméra `head_left_cam` sur `torso_link`, à la pose ci-dessus, fovy 75° ;
 - noms des vues alignés sur les rôles WLA : `head_left`, `cam_wrist_left` et `cam_wrist_right` ;
-- buste incliné à 0.136 rad par `go_ready`, mains tenues en cartésien pendant l'inclinaison ;
+- buste incliné à 0.166 rad par `go_ready`, avant de sortir les bras ;
+- caméra abaissée de 1 cm : la tête du G1-D est montée 1 cm plus bas sur `torso_link` que celle du G1 ;
 - buste compensé en gravité : la FK colle à MuJoCo à 0,1 mm près, buste droit ou penché.
 
-**Conséquence pour le vrai robot [INFÉRÉ]** : pour coller à l'entraînement, le G1-D devrait lui aussi manipuler buste penché de 0.136 rad, avec son joint de tangage. La hauteur de la caméra par rapport aux mains est déjà proche de celle du G1, à 4 cm près.
+**Conséquence pour le vrai robot [INFÉRÉ]** : pour coller à l'entraînement, le G1-D devrait lui aussi manipuler buste penché d'environ 0.166 rad, avec son joint de tangage.
 
 **Encore différent des images réelles** : la scène elle-même. La table est petite, le sol uniforme, l'éclairage simple, et les intrinsèques des caméras de poignet ne sont pas calées.
 
-### Ce qui colle déjà avec WLA
+### Écarts avec WLA : état au 29 septembre 2026
 
-- **Cadence** : contrôle à 30 Hz, comme les chunks WLA de 30 pas par seconde.
-- **Interface cartésienne** : `track_tcp` prend une pose 4×4 absolue. C'est exactement ce que le serveur WLA renvoie après composition.
-- **Format d'image** : les rendus en 640×480 ont le même rapport 4:3 que l'entrée WLA en 448×336.
-- **Trois vues** : une vue haute et deux vues de poignet, comme les trois rôles WLA.
-
-### Écarts à combler pour brancher WLA
-
-| Point | Sim | WLA attend | État |
-|---|---|---|---|
-| Repère des poses | monde MuJoCo | repère base `B` du G1, au bassin | **[INCONNU]** transformation monde → `B` à définir |
-| Point effecteur | `gripper_base_link` + 10,5 cm le long des doigts | pose `ee_pose_gripper_base` du G1 | **[INCONNU]** quel point et quels axes Unitree utilise |
-| Caméra haute | `head_left_cam`, pose d435 du G1, fovy 75° | vue gauche rectifiée de la stéréo de tête | **Fait**, intrinsèques estimées |
-| Caméras poignet | fovy 110° | intrinsèques non lues | **[INCONNU]** |
-| Pince | fermeture de 0 à 1 | valeur Dex1 brute, de 0 à 5,5 environ, médiane 3,3 | **[INCONNU]** sens d'ouverture |
-| Base roulante | aucun actionneur de roue | commande de base en vitesses | non testable en sim |
-| Colonne | verrouillée en butée basse | hauteur du bassin G1 autour de 0,74 m | correspondance à définir |
-
-**Pourquoi le point effecteur compte.** Les actions sont relatives à l'ancre. Un décalage fixe du point effecteur, ou une rotation fixe de ses axes, change les translations relatives dès que la pince tourne. Il faut utiliser le même point et les mêmes axes que le G1 des datasets.
-
-### Indice sur le repère base [INFÉRÉ]
-
-Dans les statistiques Dex1, la médiane de la pose effecteur gauche vaut environ x = 0,33 m, y = 0,15 m et z = 0,14 m dans le repère base. La hauteur médiane du bassin G1 vaut 0,74 m. La main de travail du G1 est donc à environ 0,88 m du sol.
-
-Dans la sim, la pose de travail gauche est à x = 0,35 m, y = 0,15 m et z = 0,90 m dans le repère monde. Les deux sont très proches. Un repère `B` placé à environ 0,76 m au-dessus du sol, sous le torse, mettrait nos poses dans la même distribution que le G1. À confirmer avec la position du torse dans le monde MuJoCo et avec l'URDF du G1.
+| Point | État dans la sim |
+|---|---|
+| Repère base | **Fait** : bassin virtuel du G1, voir la section 9 |
+| Effecteur | **Fait** : `ee_pose_wla` et `track_ee_wla`, voir la section 9 |
+| Caméra haute | **Fait**, intrinsèques estimées |
+| Pose de départ | **Fait** : angles médians de départ du G1 |
+| Hauteur de table | **Fait** : table remontée de 13 cm, estimation à ±3 cm |
+| Caméras poignet | **[INCONNU]** fovy 110° non calé sur les données |
+| Pince | unité et sens connus, correspondance avec la sim non calibrée |
+| Base roulante | aucun actionneur de roue, non testable en sim |
+| Bord de table | plus loin du robot que dans les données |
+| Rendu | matériaux, éclairage et décor différents des images réelles |
 
 ### Prochaine étape proposée
 
@@ -275,8 +264,8 @@ Cela permet un test zero-shot en boucle fermée sans robot, dès que les poids s
 | 1 | Effecteur | **Résolu** : Dex1 interne. |
 | 2 | Format de nos données de téléop | Ouvert. |
 | 3 | 120D = état ⊕ masque ? | **Résolu** : oui, voir la section 3. |
-| 4 | Caméra du rig de collecte | Partiel : tête stéréo, vue gauche rectifiée, et deux poignets. Intrinsèques inconnues. |
-| 5 | Repère base du G1-D | Ouvert : comparer les URDF G1 et G1-D. |
+| 4 | Caméra du rig de collecte | **Résolu** : tête stéréo, vue gauche rectifiée, et deux poignets. Intrinsèques estimées. |
+| 5 | Repère base du G1-D | **Résolu** : bassin virtuel, voir la section 9. |
 | 6 | Base fixe ou roulante | **Résolu** : roulante, pilotable par la commande de base, voir la section 5. |
 
 Nouvelles questions :
@@ -285,9 +274,80 @@ Nouvelles questions :
 |---|---|---|
 | 7 | Le gel par sous-modules libère-t-il bien le projecteur seul ? | Lancer un fine-tuning court et lire la liste des paramètres entraînables. |
 | 8 | Correspondance entre la hauteur G1 et la position de la colonne G1-D | Comparer les URDF à hauteur de caméra égale. |
-| 9 | Écart commande/mesure dans les données officielles | Charger un épisode Dex1 et comparer les deux poses à t. |
-| 10 | Point et axes de l'effecteur G1 dans les datasets | URDF du G1 Dex1 et code d'enregistrement Unitree. |
-| 11 | Sens et unité de la pince Dex1 dans les datasets | Tracer la pince sur un épisode avec prise. |
+| 9 | Écart commande/mesure dans les données officielles | **Résolu** : décalage constant d'environ 1 cm, voir la section 9. |
+| 10 | Point et axes de l'effecteur G1 dans les datasets | **Résolu** : voir la section 9. |
+| 11 | Sens et unité de la pince Dex1 dans les datasets | **Résolu pour le sens** : voir la section 9. Correspondance physique à calibrer. |
 | 12 | Caméra haute réelle du G1-D | **Résolu** : stéréo de tête stock. |
 | 13 | Intrinsèques et baseline de la stéréo de tête | Calibrer celle de notre G1-D. |
-| 14 | Le G1-D peut-il manipuler buste penché de 0.136 rad ? | Tester sur le robot. |
+| 14 | Le G1-D peut-il manipuler buste penché d'environ 0.166 rad ? | Tester sur le robot. |
+| 15 | Hauteur exacte de la table dans les datasets G1 | Reconstruire le plan de table avec la caméra calibrée. |
+| 16 | Intrinsèques des caméras de poignet | Même méthode que la tête, sur les vues de poignet. |
+
+---
+
+## 9. Contrat iso WLA pour le G1-D
+
+Ce que le client G1-D, réel ou sim, doit envoyer au serveur WLA pour rester dans la distribution d'entraînement. Tout est **[VÉRIFIÉ]** dans le code, les datasets G1 Dex1 ou l'URDF officiel du G1, sauf mention contraire.
+
+### Images
+
+- **Trois images seulement**, dans cet ordre : `head_left`, `cam_wrist_left`, `cam_wrist_right`. Aucun dataset ne charge l'œil droit : les configs de données ne listent que l'œil gauche pour la tête.
+- **Tête** : œil **gauche rectifié**, `head_stereo_left_rec`, pour les datasets Dex1. Le dataset whole-body utilise l'œil gauche **brut**.
+- **Format source** : 640×480 à 30 fps.
+- **Taille vue par le modèle** : 320×448. À l'entraînement, l'image passe en 336×448 avec antialias, puis le processeur Qwen la ramène à 320×448. Le serveur redimensionne directement en 320×448, sans antialias. La grille de patches est la même, mais le rééchantillonnage diffère un peu.
+- **Couleurs** : le serveur attend du **BGR** et le convertit en RGB. La sim rend du RGB : il faut convertir avant l'envoi.
+- **Limite de la vérification** : la config publiée du modèle Base ne liste pas ses datasets. Ce qui précède vient de la config de données du dépôt et du serveur officiel.
+
+### Prompt
+
+Le serveur construit exactement le prompt d'entraînement. Les noms de rôle y sont écrits en toutes lettres :
+
+```
+head_left: <image>
+cam_wrist_left: <image>
+cam_wrist_right: <image>
+Task: <instruction>
+State: <|robot_state_implicit_stats|><|robot_state|>
+Control Mode: Arms: EE, LOW BODY: JOINT
+```
+
+La ligne « LOW BODY » vient du type de bras `dual_with_legs` du Dex1. Le serveur la met toujours, ce qui est iso.
+
+### Repère base
+
+- Chez le G1, la base est le **bassin**. Le torse s'y trouve à une translation fixe de (-0.004, 0, 0.044) m, puis tourné du tangage de la taille.
+- Sur le G1-D, la base est un **bassin virtuel** : le repère placé sous le torse avec cette même relation, en utilisant le tangage mesuré du buste. Il reste horizontal.
+- **Validation** : les angles de départ du G1, appliqués au G1-D dans ce repère, redonnent la pose effecteur du G1 à environ 5 mm près.
+
+### Effecteur
+
+- Chez le G1, `*_ee_pose_gripper_base` est **exactement** `*_wrist_yaw_link` décalé de 0.105 m le long de son axe x, sans rotation. La FK sur un épisode donne un écart nul.
+- Sur le G1-D, on garde le même point par rapport à la pince : `*_wrist_yaw_link` + (0.105, ±0.003, 0), avec l'orientation du poignet.
+- Le TCP historique de la sim est 4 cm plus loin et tourné de 90°. Il ne faut **pas** l'envoyer au modèle.
+- **Format** : euler `xyz` extrinsèque dans les datasets. Le serveur attend xyz + rot6d, soit les deux premières colonnes de la matrice.
+- **Ordre des joints du bras dans les datasets** : ordre standard du G1, avec le poignet en roulis, tangage, lacet. Les noms des métadonnées, qui disent lacet, roulis, tangage, sont **faux**.
+
+### Bras et buste
+
+- Les bras G1 et G1-D sont identiques, sauf le dernier lien du poignet, plus court de 5 mm sur le G1-D.
+- **Buste** : tangage d'environ 0.166 rad en médiane globale, entre 0.13 et 0.18 rad selon la tâche.
+- **Pose de départ** : angles médians de départ du G1, repris dans `G1_START_Q` de la sim.
+
+### État hors bras
+
+- **Jambes** : slots **valides** à l'entraînement Dex1, avec le G1 debout. Il faut envoyer la posture debout du G1, par exemple hanche en tangage -0.41 rad et genou 0.65 rad. Le détail est dans `G1_STANDING_LEGS` de la sim. Le briefing supposait ces slots masqués : c'est faux pour les données Dex1.
+- **Taille** : slot valide. Envoyer [lacet 0, roulis 0, tangage du buste G1-D]. Chez le G1, le tangage de la taille est égal au tangage du buste.
+- **Pince** : unité Dex1 brute. La valeur **monte à l'ouverture** : environ 4,5 ouverte au repos, environ 2,4 fermée sur un cube de 4 cm, plage totale de 0 à 5,5. La correspondance avec la position des doigts de la sim reste à calibrer.
+- **Clé de normalisation** : `UnifoLM_G1_Dex1`.
+
+### Actions
+
+- Bras relatifs à l'ancre mesurée, chunk de 30 pas à 30 Hz, voir la section 4.
+- **Commande et mesure** : décalage constant d'environ 1 cm en médiane, sans retard. C'est l'erreur de suivi du G1.
+- **Commande de base** dans les données Dex1 de table : vitesses nulles, hauteur de bassin environ 0,73 m.
+
+### Scène
+
+- **Table** **[INFÉRÉ]** : environ 0,07 m au-dessus du bassin G1, à ±3 cm, estimé depuis la hauteur des prises. Le bassin G1 est à environ 0,73 m du sol.
+- **G1-D réel** : avec la colonne en butée basse, son bassin virtuel est à environ 0,80 m. Pour être iso, sa table devrait être à environ 0,87 m, ou plus haut si la colonne monte.
+

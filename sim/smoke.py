@@ -10,7 +10,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from g1d_sim import CAMERAS, SIDES, G1DSim  # noqa: E402
-from g1d_sim.robot import READY_TCP, TORSO_PITCH  # noqa: E402
+from g1d_sim.robot import G1_START_Q, TORSO_PITCH  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "smoke_out"
 
@@ -46,9 +46,9 @@ def main() -> int:
     moved = np.linalg.norm(sim.object_pose()[:3, 3] - piece0) * 1000
     results.append(check(moved < 5.0, f"go_ready ne touche pas la pièce (déplacée de {moved:.1f} mm)"))
     for s in SIDES:
-        err = np.linalg.norm(sim.tcp_pose(s)[:3, 3] - READY_TCP[s]) * 1000
-        results.append(check(err < 10.0, f"{s}: pose de travail atteinte à {err:.1f} mm"))
-    # 4. pinces : fermeture à vide puis réouverture, en pose de travail AU-DESSUS de la pièce.
+        err = np.linalg.norm(sim.tcp_pose(s)[:3, 3] - sim.tcp_pose(s, G1_START_Q[s])[:3, 3]) * 1000
+        results.append(check(err < 10.0, f"{s}: pose de départ G1 atteinte à {err:.1f} mm"))
+    # 4. pinces : fermeture à vide puis réouverture, en pose de départ AU-DESSUS de la pièce.
     #    (Testées après l'approche, le doigt droit se referme à 1 cm du centre de la pièce et
     #    l'accroche : le test passait ou échouait au hasard.)
     for s in SIDES:
@@ -62,23 +62,24 @@ def main() -> int:
         results.append(check(closed[s] > 0.9 and sim.gripper(s) < 0.1,
                              f"{s}: pince fermée {closed[s]:.2f} / rouverte {sim.gripper(s):.2f}"))
 
-    # approche de prise : 8 cm vers la table, 3 cm vers le robot, les deux bras ensemble
-    # (pince verticale + colonne basse : atteignable pour x ∈ [0.25, 0.35], z ∈ [0.78, 0.90])
-    T0 = {s: sim.tcp_pose(s) for s in SIDES}
+    # suivi cartésien dans la BASE WLA : 2 cm vers l'avant et 2 cm vers le HAUT, les deux bras
+    # ensemble. Vers le bas, un doigt droit (tourné vers l'intérieur comme chez le G1) touche la
+    # pièce et le test mesurerait la scène, pas le suivi (mesuré).
+    T0 = {s: sim.ee_pose_wla(s) for s in SIDES}
     T1 = {s: T0[s].copy() for s in SIDES}
     for s in SIDES:
-        T1[s][:3, 3] += [-0.03, 0.0, -0.08]
+        T1[s][:3, 3] += [0.02, 0.0, 0.02]
     n_ok = {s: 0 for s in SIDES}
     ramp = np.linspace(0, 1, 45)[1:]                      # 1,5 s de rampe cartésienne
     for a in ramp:
         for s in SIDES:
             Ta = T0[s].copy()
             Ta[:3, 3] = (1 - a) * T0[s][:3, 3] + a * T1[s][:3, 3]
-            n_ok[s] += sim.track_tcp(s, Ta)
+            n_ok[s] += sim.track_ee_wla(s, Ta)
         sim.step()
     sim.step(30)
     for s in SIDES:
-        err = np.linalg.norm(sim.tcp_pose(s)[:3, 3] - T1[s][:3, 3]) * 1000
+        err = np.linalg.norm(sim.ee_pose_wla(s)[:3, 3] - T1[s][:3, 3]) * 1000
         results.append(check(err < 5.0 and n_ok[s] == len(ramp),
                              f"{s}: suivi cartésien {n_ok[s]}/{len(ramp)} IK, erreur finale {err:.1f} mm"))
 
@@ -91,6 +92,18 @@ def main() -> int:
     jump = np.abs(sim.arm_q("left") - q_before).max()
     results.append(check(refused and jump < 0.01,
                          f"cible hors d'atteinte refusée, bras tenu (dérive {jump:.4f} rad)"))
+
+    # 4 bis. repères WLA : effecteur dans la base WLA, aller-retour et plage du G1
+    for s in SIDES:
+        T_ee = sim.ee_pose_wla(s)
+        q_before = sim.arm_q(s)
+        ok = sim.track_ee_wla(s, T_ee)
+        sim.step(15)
+        drift = np.linalg.norm(sim.ee_pose_wla(s)[:3, 3] - T_ee[:3, 3]) * 1000
+        results.append(check(ok and drift < 2.0,
+                             f"{s}: effecteur WLA en base {np.round(T_ee[:3, 3], 3)}, aller-retour {drift:.2f} mm"))
+    zb = sim.base_pose_wla()[:3, 2]
+    results.append(check(abs(zb[2] - 1.0) < 1e-3, f"base WLA horizontale (z·z = {zb[2]:.5f})"))
 
     # 5. rollback : sauvegarder, bouger, restaurer -> état identique
     snap = sim.save_state()

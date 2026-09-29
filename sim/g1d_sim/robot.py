@@ -40,16 +40,42 @@ SIDES = ("left", "right")
 CAMERAS = {"head_left": "head_left_cam", "cam_wrist_left": "left_wrist_cam",
            "cam_wrist_right": "right_wrist_cam"}
 
-#: tangage du buste du G1 par rapport au bassin pendant la manipulation, lu dans les datasets
-#: G1 Dex1 (``observation.state.state_torso``, médiane 0.136 rad). Avec lui, la caméra de tête
-#: plonge de 55° comme à l'entraînement (au lieu de 49° buste droit).
-TORSO_PITCH = 0.136
+#: tangage du buste du G1 par rapport au bassin pendant la manipulation : médiane GLOBALE des
+#: statistiques d'entraînement (``observation.state.state_torso``, 54 M frames : 0.166 rad).
+#: Il dépend de la tâche : 0.127 (Stack_Block), 0.182 (Wipe_Table). Chez le G1 il est porté par
+#: le tangage de la taille. Buste droit, la caméra de tête plongerait ~10° de moins.
+TORSO_PITCH = 0.166
+#: jambes du G1 debout pendant les tâches de table Dex1, ordre [hip_pitch, hip_roll, hip_yaw,
+#: knee, ankle_pitch, ankle_roll] : moyenne des médianes de Stack_Block (40 épisodes) et
+#: Wipe_Table. Ces slots sont VALIDES à l'entraînement Dex1 (le serveur les marque valides) :
+#: le G1-D, sans jambes, doit envoyer cette posture pour rester dans la distribution.
+G1_STANDING_LEGS = {"left": np.array([-0.408, 0.027, -0.032, 0.664, -0.25, -0.016]),
+                    "right": np.array([-0.44, 0.005, 0.026, 0.639, -0.192, 0.007])}
 #: joint de tangage du buste. Il s'appelle ``Yaw_Joint`` dans la scène mais son axe est y.
 TORSO_JOINT = "Yaw_Joint"
 #: joints hors bras tenus fixes : colonne télescopique (2 étages) en butée basse, buste DROIT
 #: au reset. Le buste ne s'incline qu'une fois les bras au-dessus de la table (``go_ready``) :
 #: incliné en tuck, les poignets entrent dans la table et la physique diverge (mesuré).
 LOCKED_JOINTS = {"LZ_mt_Joint": 0.0, "LZ_it_Joint": 0.0, TORSO_JOINT: 0.0}
+#: bassin du G1 -> torso_link, tailles yaw = roll = 0 (URDF officiel g1_29dof_mode_15_with_dex1_1,
+#: vérifié par FK) : translation fixe puis tangage de la taille. Sert à placer le repère base
+#: WLA (= bassin du G1) comme un bassin VIRTUEL sous le buste du G1-D.
+G1_PELVIS_TO_TORSO_XYZ = np.array([-0.0039635, 0.0, 0.044])
+#: effecteur WLA (``*_ee_pose_gripper_base`` des datasets G1 Dex1) dans ``*_wrist_yaw_link`` :
+#: sur le G1, exactement wrist_yaw + 0.105 m le long de x, SANS rotation (FK sur un épisode,
+#: écart nul). Sur le G1-D on garde le même point PAR RAPPORT À LA PINCE : la Dex1 y est montée
+#: au même endroit (0.0415 m) avec 3 mm de décalage latéral, d'où ±0.003 en y.
+WLA_EE_IN_WRIST = {"left": np.array([0.105, 0.003, 0.0]), "right": np.array([0.105, -0.003, 0.0])}
+#: pose de DÉPART des épisodes G1 Dex1 : angles médians des bras à la frame 0 (40 épisodes de
+#: G1_Dex1_Stack_Block). Les bras G1 et G1-D étant identiques (au poignet près, 5 mm), ces angles
+#: redonnent la pose effecteur de départ du G1 dans la base WLA (vérifié : ~5 mm, ~0.05 rad).
+G1_START_Q = {"left": np.array([-0.235, 0.848, 0.25, 0.115, -0.55, 0.201, -1.32]),
+              "right": np.array([-0.164, -0.972, -0.262, -0.371, 0.619, 0.625, 1.135])}
+#: posture de PASSAGE tuck -> départ, bras droit (gauche = miroir) : bras écartés, coude fléchi,
+#: avant-bras relevé au-dessus du bord de table. Trouvée par recherche de collisions le long des
+#: deux rampes articulaires (scène actuelle, buste à TORSO_PITCH). La rampe directe fait taper
+#: les poignets dans le bord de la table et dans le carton (mesuré).
+VIA_Q_RIGHT = np.array([0.041, -1.3, -0.982, 1.667, 1.753, 0.556, 1.166])
 #: pose de repos, bras le long du corps (config.motion._tuck de mpc_any)
 TUCK_Q = np.array([0.3, 0.0, 0.0, 1.57, 0.0, 0.0, 0.0])
 #: consigne mors Joint1_1 (m). OUVERT à -0.018 et pas -0.02 (butée : le servo s'y bat) ;
@@ -63,12 +89,9 @@ R_DOWN = np.array([[0.0, 0.0, -1.0], [1.0, 0.0, 0.0], [0.0, -1.0, 0.0]])
 ARM_MIRROR_SIGNS = np.array([1.0, -1.0, -1.0, 1.0, -1.0, 1.0, -1.0])
 #: posture de référence nullspace, bras droit (config.motion.natural_q)
 NATURAL_Q_RIGHT = np.array([-0.7, -0.45, 0.0, 1.1, 0.0, 0.6, 0.0])
-#: pose de TRAVAIL (départ des épisodes VLA) : TCP au-dessus de la table, pince vers le
-#: bas. ⚠ Le tuck est quasi singulier (bras pendant) : un suivi cartésien en ``follow``
-#: depuis le tuck décroche (mesuré : 6/44 sous-cibles convergées) — partir d'ici.
-READY_TCP = {"left": np.array([0.35, 0.15, 0.90]), "right": np.array([0.35, -0.15, 0.90])}
-#: hauteur du point de passage de ``go_ready`` : au-dessus des murs du carton (0.822)
-VIA_Z = 0.95
+#: pince « par le dessus » : ``R_DOWN`` reste disponible pour des poses IK sur mesure.
+#: ⚠ Le tuck est quasi singulier (bras pendant) : un suivi cartésien en ``follow`` depuis le
+#: tuck décroche (mesuré : 6/44 sous-cibles convergées) — toujours passer par ``go_ready``.
 #: borne de vitesse articulaire de ``track_tcp`` (rad/s)
 MAX_JOINT_SPEED = 3.0
 
@@ -133,9 +156,19 @@ class G1DSim:
         """Tangage MESURÉ du buste (rad)."""
         return float(self.d.qpos[self.m.joint(TORSO_JOINT).qposadr[0]])
 
-    def set_torso_pitch(self, pitch: float, duration_s: float = 1.0) -> None:
-        """Rampe du tangage du buste, les deux TCP TENUS en repère monde (``track_tcp`` à
-        chaque pas, FK recalée à chaque pas puisqu'elle dépend du buste)."""
+    def set_torso_pitch(self, pitch: float, duration_s: float = 1.0, hold_tcp: bool = True) -> None:
+        """Rampe du tangage du buste, FK recalée à chaque pas (elle dépend du buste).
+        ``hold_tcp=True`` : les deux TCP sont TENUS en repère monde (``track_tcp``) ;
+        sinon les consignes articulaires des bras sont tenues et les mains suivent le buste."""
+        if not hold_tcp:
+            start = float(self.d.ctrl[self._torso_act])
+            n = max(1, int(duration_s * self.control_hz))
+            for a in np.linspace(0.0, 1.0, n + 1)[1:]:
+                self.d.ctrl[self._torso_act] = (1 - a) * start + a * pitch
+                self.step()
+            self.step(int(0.5 * self.control_hz))
+            self._refresh_kinematics()
+            return
         hold = {s: self.tcp_pose(s) for s in SIDES}
         start = float(self.d.ctrl[self._torso_act])
         n = max(1, int(duration_s * self.control_hz))
@@ -237,30 +270,79 @@ class G1DSim:
 
     def go_ready(self, poses: dict[str, np.ndarray] | None = None,
                  duration_s: float = 2.0, torso_pitch: float = TORSO_PITCH) -> None:
-        """Les deux bras en pose de travail, pinces ouvertes, buste incliné à ``torso_pitch``.
-        ``poses`` = TCP 4×4 monde par bras ; défaut = ``READY_TCP`` pince vers le bas."""
-        # 1. Rampe articulaire directe du tuck vers la pose de travail, buste DROIT.
-        #    (L'ancienne version visait d'abord un point de passage « monter sur place » :
-        #    hors d'atteinte pince vers le bas, l'IK échouait toujours et ce trajet direct
-        #    était en fait le seul exécuté — mesuré. Il ne touche pas le décor buste droit.)
-        # 2. Inclinaison du buste à ``torso_pitch``, mains TENUES en cartésien.
-        #    Incliner le buste avant d'amener les bras fait balayer la pièce (mesuré).
-        targets = {}
+        """Pose de départ des épisodes, pinces ouvertes, buste incliné à ``torso_pitch``.
+
+        Par défaut, les bras vont aux angles de départ du G1 (``G1_START_Q``) : même pose
+        effecteur dans la base WLA qu'à l'entraînement. ``poses`` (TCP 4×4 monde par bras)
+        remplace ces angles par une IK.
+
+        Ordre : buste incliné D'ABORD (bras en tuck, consignes articulaires tenues), puis
+        rampe articulaire vers la pose : les angles de départ du G1 sont définis buste penché.
+        """
         for s in SIDES:
-            if poses is not None:
-                T = np.asarray(poses[s], float)
-            else:
-                T = np.eye(4)
-                T[:3, :3], T[:3, 3] = R_DOWN, READY_TCP[s]
-            q, ok = self.kin[s].ik(pin.SE3(T[:3, :3], T[:3, 3] - self.mj_pin), self.arm_q(s),
-                                   posture=self.natural_q(s))
-            if not ok:
-                raise RuntimeError(f"{s}: pose de travail {np.round(T[:3, 3], 3)} hors d'atteinte")
-            targets[s] = q
             self.set_gripper(s, 0.0)
-        self.move_arms(targets, duration_s)
         if abs(torso_pitch - self.torso_pitch()) > 1e-3:
-            self.set_torso_pitch(torso_pitch)
+            self.set_torso_pitch(torso_pitch, hold_tcp=False)
+        if poses is None:
+            self.move_arms({"right": VIA_Q_RIGHT, "left": VIA_Q_RIGHT * ARM_MIRROR_SIGNS},
+                           duration_s / 2)
+            targets = {s: G1_START_Q[s].copy() for s in SIDES}
+        else:
+            targets = {}
+            for s in SIDES:
+                T = np.asarray(poses[s], float)
+                q, ok = self.kin[s].ik(pin.SE3(T[:3, :3], T[:3, 3] - self.mj_pin), self.arm_q(s),
+                                       posture=self.natural_q(s))
+                if not ok:
+                    raise RuntimeError(f"{s}: pose {np.round(T[:3, 3], 3)} hors d'atteinte")
+                targets[s] = q
+        self.move_arms(targets, duration_s)
+
+    # ------------------------------------------------------------------ repères WLA
+    def base_pose_wla(self) -> np.ndarray:
+        """Repère base WLA en MONDE : bassin virtuel du G1 placé sous le buste du G1-D, tel
+        que torse/base = celui du G1 (translation ``G1_PELVIS_TO_TORSO_XYZ`` puis tangage du
+        buste, porté chez le G1 par le tangage de la taille)."""
+        T_wt = np.eye(4)
+        T_wt[:3, :3] = self.d.body("torso_link").xmat.reshape(3, 3)
+        T_wt[:3, 3] = self.d.body("torso_link").xpos
+        T_bt = np.eye(4)
+        T_bt[:3, :3] = pin.utils.rpyToMatrix(0.0, self.torso_pitch(), 0.0)
+        T_bt[:3, 3] = G1_PELVIS_TO_TORSO_XYZ
+        return T_wt @ np.linalg.inv(T_bt)
+
+    def _tcp_to_ee(self, side: str) -> np.ndarray:
+        """Transformation fixe TCP sim -> effecteur WLA (4×4)."""
+        k = self.kin[side]
+        q = pin.neutral(k.model)
+        pin.framesForwardKinematics(k.model, k.data, q)
+        T_w = k.data.oMf[k.model.getFrameId(f"{side}_wrist_yaw_link")]
+        T_wrist_tcp = T_w.actInv(k.fk(q)).homogeneous
+        T_wrist_ee = np.eye(4)
+        T_wrist_ee[:3, 3] = WLA_EE_IN_WRIST[side]
+        return np.linalg.inv(T_wrist_tcp) @ T_wrist_ee
+
+    def ee_pose_wla(self, side: str) -> np.ndarray:
+        """Pose 4×4 de l'effecteur WLA dans le repère base WLA — ce que le modèle attend dans
+        ``observation.state.*_ee_pose_gripper_base``."""
+        T_we = self.tcp_pose(side) @ self._tcp_to_ee(side)
+        return np.linalg.inv(self.base_pose_wla()) @ T_we
+
+    def track_ee_wla(self, side: str, T_base_ee: np.ndarray, **kw) -> bool:
+        """``track_tcp`` avec une cible effecteur WLA exprimée dans le repère base WLA
+        (sortie absolue du serveur après composition)."""
+        T_we = self.base_pose_wla() @ np.asarray(T_base_ee, float)
+        return self.track_tcp(side, T_we @ np.linalg.inv(self._tcp_to_ee(side)), **kw)
+
+    def lower_body_wla(self) -> np.ndarray:
+        """``observation.state.lower_body`` du serveur WLA (15) : jambe gauche (6), jambe
+        droite (6), taille [yaw, roll, pitch] (3). Jambes = G1 debout, taille = buste G1-D."""
+        return np.concatenate([G1_STANDING_LEGS["left"], G1_STANDING_LEGS["right"], self.waist_wla()])
+
+    def waist_wla(self) -> np.ndarray:
+        """Slot taille WLA [yaw, roll, pitch] : chez le G1, le tangage de la taille EST le
+        tangage du buste (égalité vérifiée sur un épisode). Le G1-D n'a que le tangage."""
+        return np.array([0.0, 0.0, self.torso_pitch()])
 
     # ------------------------------------------------------------------ pinces
     def set_gripper(self, side: str, closure: float) -> None:
@@ -310,4 +392,4 @@ class G1DSim:
         mujoco.mj_forward(self.m, self.d)
 
 
-__all__ = ["G1DSim", "CAMERAS", "SIDES", "ARM_JOINTS", "SCENE_XML", "URDF", "TORSO_PITCH"]
+__all__ = ["G1DSim", "CAMERAS", "SIDES", "ARM_JOINTS", "SCENE_XML", "URDF", "TORSO_PITCH", "G1_START_Q", "G1_STANDING_LEGS"]
