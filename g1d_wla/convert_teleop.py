@@ -44,16 +44,39 @@ ARM = ["shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow", "wrist_roll",
 LEG = ["hip_pitch", "hip_roll", "hip_yaw", "knee", "ankle_pitch", "ankle_roll"]
 
 #: images xr_teleoperate -> clés des datasets G1 Dex1. La téléop numérote les vues dans l'ordre
-#: tête (1 ou 2 yeux) puis poignets : 4 images = tête binoculaire, 3 = tête monoculaire (sim).
+#: tête (1 ou 2 yeux) puis poignets ACTIFS : le nombre d'images ne suffit pas à trouver la disposition
+#: (tête monoculaire de la sim et --right-only avec tête binoculaire donnent tous deux 3 images).
 IMAGE_LAYOUTS = {
-    4: {"color_0": "observation.images.head_stereo_left",
-        "color_1": "observation.images.head_stereo_right",
-        "color_2": "observation.images.wrist_left",
-        "color_3": "observation.images.wrist_right"},
-    3: {"color_0": "observation.images.head_stereo_left",
-        "color_1": "observation.images.wrist_left",
-        "color_2": "observation.images.wrist_right"},
+    "binocular": {"color_0": "observation.images.head_stereo_left",
+                  "color_1": "observation.images.head_stereo_right",
+                  "color_2": "observation.images.wrist_left",
+                  "color_3": "observation.images.wrist_right"},
+    "mono": {"color_0": "observation.images.head_stereo_left",          # sim : œil gauche seul
+             "color_1": "observation.images.wrist_left",
+             "color_2": "observation.images.wrist_right"},
+    "right-only": {"color_0": "observation.images.head_stereo_left",    # téléop --right-only
+                   "color_1": "observation.images.head_stereo_right",
+                   "color_2": "observation.images.wrist_right",
+                   None: "observation.images.wrist_left"},              # poignet gauche absent : image noire
 }
+N_IMAGES = {"binocular": 4, "mono": 3, "right-only": 3}
+
+
+def episode_layout(doc: dict, forced: str) -> str:
+    """Disposition des images d'un épisode : forcée, sinon d'après l'en-tête (sim) et le nombre."""
+    n = len(doc["data"][0]["colors"])
+    if forced != "auto":
+        lay = forced
+    elif n == 4:
+        lay = "binocular"
+    elif n == 3 and str(doc.get("info", {}).get("source", "")).startswith("sim/"):
+        lay = "mono"
+    else:
+        raise ValueError(f"{n} images par pas sans en-tête de sim : préciser --layout "
+                         f"(right-only pour un enregistrement --right-only)")
+    if n != N_IMAGES[lay]:
+        raise ValueError(f"disposition {lay} : {N_IMAGES[lay]} images attendues, {n} trouvées")
+    return lay
 
 
 def _vec(n: int, names: list[str]) -> dict:
@@ -129,6 +152,9 @@ def main() -> None:
                     help="hauteur de bassin G1 équivalente pour action.base_command (défaut : médiane G1)")
     ap.add_argument("--episodes", type=int, nargs="*", default=None, help="indices d'épisodes à convertir")
     ap.add_argument("--vcodec", default="libsvtav1")
+    ap.add_argument("--layout", choices=["auto", "binocular", "mono", "right-only"], default="auto",
+                    help="disposition des images : auto = 4 images -> binoculaire, 3 images d'un épisode de sim "
+                         "-> mono ; right-only obligatoire pour la téléop --right-only")
     ap.add_argument("--advantage", choices=["auto", "on", "off"], default="auto",
                     help="colonnes advantage/intervention (RECAP) : auto = si un épisode porte step['advantage'] ; "
                          "les pas sans étiquette valent --default-advantage")
@@ -155,16 +181,21 @@ def main() -> None:
                     args.torso_pitch_index)
 
     fk = {s: ArmFK(s) for s in SIDES}
-    n_img = len(load_episode(ep_dirs[0])["steps"][0]["colors"])
-    if n_img not in IMAGE_LAYOUTS:
-        raise SystemExit(f"{n_img} images par pas : dispositions connues {sorted(IMAGE_LAYOUTS)}")
-    image_keys = IMAGE_LAYOUTS[n_img]
-    log.info("%d images par pas : %s", n_img, list(image_keys.values()))
+    # disposition vérifiée sur TOUS les épisodes avant d'écrire quoi que ce soit
+    layouts = {p.name: episode_layout(json.loads((p / "data.json").read_text()), args.layout) for p in ep_dirs}
+    kinds = sorted(set(layouts.values()))
+    image_keys = {v: v for v in IMAGE_LAYOUTS["binocular"].values()}   # mêmes clés de sortie pour toutes
+    if "mono" in kinds:
+        image_keys = {v: v for v in IMAGE_LAYOUTS["mono"].values()}
+        if len(kinds) > 1:
+            raise SystemExit(f"dispositions mélangées {kinds} : convertir séparément la sim et le réel")
+    log.info("disposition des images : %s -> %s", kinds, list(image_keys.values()))
     with_adv = args.advantage == "on" or (
         args.advantage == "auto" and any("advantage" in load_episode(p)["steps"][0] for p in ep_dirs))
     if with_adv:
         log.info("colonnes advantage / intervention écrites (défaut %.1f)", args.default_advantage)
-    ds = LeRobotDataset.create(repo_id=args.repo_id, fps=FPS, features=build_features(image_keys, with_adv), root=args.out_dir,
+    ds = LeRobotDataset.create(repo_id=args.repo_id, fps=FPS, features=build_features(
+                                   {k: k for k in image_keys.values()}, with_adv), root=args.out_dir,
                                robot_type="unitree_g1d", use_videos=True, vcodec=args.vcodec,
                                image_writer_threads=4)
     for n, ep_dir in enumerate(ep_dirs):
@@ -173,7 +204,10 @@ def main() -> None:
         arrays = convert_episode(ep, fk, args.torso_pitch_index, args.torso_pitch, args.base_height)
         for t, st in enumerate(ep["steps"]):
             frame = {k: v[t] for k, v in arrays.items()}
-            for ck, fk_name in image_keys.items():
+            for ck, fk_name in IMAGE_LAYOUTS[layouts[ep_dir.name]].items():
+                if ck is None:
+                    frame[fk_name] = np.zeros(IMG_SHAPE, np.uint8)
+                    continue
                 path = st["colors"].get(ck)
                 if path is None:
                     raise ValueError(f"{ep_dir.name} pas {t} : image {ck} absente")

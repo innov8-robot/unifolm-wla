@@ -139,7 +139,7 @@ def main() -> int:
     pitch_ok = abs(sim.torso_pitch() - TORSO_PITCH) < 0.01
     results.append(check(pitch_ok, f"buste incliné à {sim.torso_pitch():.3f} rad (cible {TORSO_PITCH})"))
 
-    print(f"objet 'piece' (GT) en {np.round(sim.object_pose()[:3, 3], 3)}")
+    print(f"objet '{sim.object_body}' (GT) en {np.round(sim.object_pose()[:3, 3], 3)} — scène {sim.scene_xml.name}")
     sim.close()
     print(f"{sum(results)}/{len(results)} vérifications passées")
     return 0 if all(results) else 1

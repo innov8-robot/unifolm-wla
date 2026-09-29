@@ -92,12 +92,17 @@ MAX_JOINT_SPEED = 3.0
 
 
 class G1DSim:
-    def __init__(self, scene_xml: str | Path = SCENE_XML, urdf: str | Path = URDF, *,
+    def __init__(self, scene_xml: str | Path | None = None, urdf: str | Path = URDF, *,
                  control_hz: float = 30.0, image_size: tuple[int, int] = (640, 480),
                  head_view: str = "rec") -> None:
         if head_view not in HEAD_VIEWS:
             raise ValueError(f"head_view='{head_view}' (attendu : {list(HEAD_VIEWS)})")
         self.cameras = dict(CAMERAS, head_left=HEAD_VIEWS[head_view])
+        if scene_xml is None:
+            # scène d'origine si la pièce Novares (non versionnée) est présente, sinon la scène cube
+            scene_xml = SCENE_XML if (ASSETS / "meshes" / "_Novares_Piece1_centered.stl").exists() else SCENE_CUBE_XML
+        self.scene_xml = Path(scene_xml)
+        self.object_body = "piece" if "piece" in open(scene_xml).read() else "cube"
         self.m = mujoco.MjModel.from_xml_path(str(scene_xml))
         self.d = mujoco.MjData(self.m)
         self.control_hz = float(control_hz)
@@ -371,8 +376,10 @@ class G1DSim:
         return {k: self.render(k) for k in self.cameras}
 
     # ------------------------------------------------------------------ monde / état
-    def object_pose(self, body: str = "piece") -> np.ndarray:
-        """⚠ VÉRITÉ TERRAIN (sim seulement) — pour le scoring, jamais pour la politique."""
+    def object_pose(self, body: str | None = None) -> np.ndarray:
+        """⚠ VÉRITÉ TERRAIN (sim seulement) — pour le scoring, jamais pour la politique. ``body`` :
+        défaut = objet de la scène (``piece`` ou ``cube``)."""
+        body = body or self.object_body
         T = np.eye(4)
         T[:3, :3] = self.d.body(body).xmat.reshape(3, 3)
         T[:3, 3] = self.d.body(body).xpos
@@ -398,6 +405,9 @@ class G1DSim:
     def restore_state(self, state: np.ndarray) -> None:
         mujoco.mj_setState(self.m, self.d, state, mujoco.mjtState.mjSTATE_INTEGRATION)
         mujoco.mj_forward(self.m, self.d)
+        # la FK dépend du tangage du buste et de la colonne : la recaler sur l'état restauré
+        # (sans ça, 64 mm d'erreur si le buste a changé depuis la sauvegarde, audit du 29/09)
+        self._refresh_kinematics()
 
 
 __all__ = ["G1DSim", "CAMERAS", "SIDES", "ARM_JOINTS", "SCENE_XML", "URDF", "TORSO_PITCH", "G1_START_Q", "G1_STANDING_LEGS", "HEAD_VIEWS", "SCENE_CUBE_XML"]
