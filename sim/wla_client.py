@@ -8,7 +8,7 @@
 
 2. lancer ce client (env de la sim) ::
 
-       MUJOCO_GL=egl python sim/wla_client.py --instruction "pick up the black part" --chunks 10
+       MUJOCO_GL=egl python sim/wla_client.py --scene cube --instruction "pick up the red cube" --episodes 30
 
 À chaque cycle : observation au format WLA (3 images BGR, effecteurs xyz + rot6d dans la base WLA,
 pinces en unité Dex1, bas du corps), puis exécution des ``--exec-steps`` premiers pas du chunk à
@@ -31,7 +31,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "model_server"))
-from g1d_sim import SIDES, G1DSim  # noqa: E402
+from g1d_sim import SCENE_CUBE_XML, SCENE_XML, SIDES, G1DSim  # noqa: E402
 from tools import msgpack_numpy  # noqa: E402
 
 #: pince Dex1 grande ouverte, unité moteur (xr_teleoperate : 0 fermée -> 5.4 ouverte)
@@ -79,63 +79,90 @@ def build_obs(sim: G1DSim, instruction: str, unnorm_key: str | None) -> dict:
     return obs, imgs
 
 
+async def run_chunks(ws, packer, sim, args, frames, max_steps) -> list:
+    """Joue des chunks jusqu'à ``max_steps`` pas ; rend le journal par chunk."""
+    entries, steps = [], 0
+    while steps < max_steps:
+        obs, _ = build_obs(sim, args.instruction, args.unnorm_key)
+        t0 = time.perf_counter()
+        await ws.send(packer.pack({"type": "get_action", "obs": obs}))
+        raw = await ws.recv()
+        if isinstance(raw, str):
+            raise RuntimeError(f"erreur serveur :\n{raw}")
+        act = msgpack_numpy.unpackb(raw)
+        dt = time.perf_counter() - t0
+        chunk = {s: np.asarray(act[f"action.{s}_ee_rpy"])[0] for s in SIDES}
+        grip = {s: np.asarray(act[f"action.{s}_gripper"])[0, :, 0] for s in SIDES}
+        n_exec = min(args.exec_steps, len(chunk["left"]), max_steps - steps)
+        refused = {s: 0 for s in SIDES}
+        ee_before = {s: sim.ee_pose_wla(s)[:3, 3].copy() for s in SIDES}
+        for t in range(n_exec):
+            for s in SIDES:
+                refused[s] += not sim.track_ee_wla(s, xyz_rpy_to_matrix(chunk[s][t]))
+                sim.set_gripper(s, dex1_to_closure(grip[s][t]))
+            sim.step()
+            if frames is not None and (steps + t) % args.video_every == 0:
+                v = sim.render_all()
+                frames.append(np.concatenate([v["head_left"], v["cam_wrist_left"], v["cam_wrist_right"]], axis=1))
+        steps += n_exec
+        entries.append({
+            "inference_s": round(dt, 3), "exec_steps": n_exec, "ik_refused": refused,
+            "ee_start": {s: np.round(ee_before[s], 4).tolist() for s in SIDES},
+            "ee_reached": {s: np.round(sim.ee_pose_wla(s)[:3, 3], 4).tolist() for s in SIDES},
+            "gripper_cmd_dex1": {s: [round(float(grip[s][0]), 3), round(float(grip[s][n_exec - 1]), 3)] for s in SIDES},
+        })
+    return entries
+
+
+def save_video(frames, path: Path, fps: float) -> None:
+    import imageio.v3 as iio
+    try:
+        iio.imwrite(path, np.stack(frames), fps=fps)
+    except Exception as e:  # ffmpeg absent : première et dernière vues seulement
+        print(f"vidéo non écrite ({e})")
+        iio.imwrite(path.with_suffix(".first.png"), frames[0])
+        iio.imwrite(path.with_suffix(".last.png"), frames[-1])
+
+
 async def run(args) -> dict:
     import websockets
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    sim = G1DSim(head_view=args.head_view)
-    sim.go_ready()
-    frames, log = [], {"args": vars(args), "chunks": []}
+    cube = args.scene == "cube"
+    sim = G1DSim(scene_xml=SCENE_CUBE_XML if cube else SCENE_XML, head_view=args.head_view)
+    rng = np.random.default_rng(args.seed)
+    log = {"args": vars(args), "episodes": []}
     packer = msgpack_numpy.Packer()
     async with websockets.connect(args.uri, max_size=None, ping_interval=None) as ws:
         meta = msgpack_numpy.unpackb(await ws.recv())
-        print(f"serveur : {meta.get('env')} chunk={meta.get('action_chunk_size')} "
-              f"clés norm={meta.get('available_unnorm_keys')}", flush=True)
-        for c in range(args.chunks):
-            obs, imgs = build_obs(sim, args.instruction, args.unnorm_key)
-            t0 = time.perf_counter()
-            await ws.send(packer.pack({"type": "get_action", "obs": obs}))
-            raw = await ws.recv()
-            if isinstance(raw, str):
-                raise RuntimeError(f"erreur serveur :\n{raw}")
-            act = msgpack_numpy.unpackb(raw)
-            dt = time.perf_counter() - t0
-            chunk = {s: np.asarray(act[f"action.{s}_ee_rpy"])[0] for s in SIDES}
-            grip = {s: np.asarray(act[f"action.{s}_gripper"])[0, :, 0] for s in SIDES}
-            n_exec = min(args.exec_steps, len(chunk["left"]))
-            refused = {s: 0 for s in SIDES}
-            ee_before = {s: sim.ee_pose_wla(s)[:3, 3].copy() for s in SIDES}
-            for t in range(n_exec):
-                for s in SIDES:
-                    refused[s] += not sim.track_ee_wla(s, xyz_rpy_to_matrix(chunk[s][t]))
-                    sim.set_gripper(s, dex1_to_closure(grip[s][t]))
-                sim.step()
-                if t % args.video_every == 0:
-                    v = sim.render_all()
-                    frames.append(np.concatenate([v["head_left"], v["cam_wrist_left"], v["cam_wrist_right"]], axis=1))
-            entry = {
-                "chunk": c, "inference_s": round(dt, 3), "exec_steps": n_exec, "ik_refused": refused,
-                "ee_start": {s: np.round(ee_before[s], 4).tolist() for s in SIDES},
-                "ee_target_end": {s: np.round(chunk[s][n_exec - 1, :3], 4).tolist() for s in SIDES},
-                "ee_reached": {s: np.round(sim.ee_pose_wla(s)[:3, 3], 4).tolist() for s in SIDES},
-                "gripper_cmd_dex1": {s: [round(float(grip[s][0]), 3), round(float(grip[s][n_exec - 1]), 3)] for s in SIDES},
-                "piece_world": np.round(sim.object_pose()[:3, 3], 4).tolist(),
-            }
-            log["chunks"].append(entry)
-            print(f"chunk {c}: inférence {dt:.2f}s | IK refusées {refused} | "
-                  f"EE droit {entry['ee_start']['right']} -> {entry['ee_reached']['right']} | "
-                  f"pince D {entry['gripper_cmd_dex1']['right']}", flush=True)
-    (out / "log.json").write_text(json.dumps(log, indent=2))
-    try:
-        import imageio.v3 as iio
-        iio.imwrite(out / "rollout.mp4", np.stack(frames), fps=30 / args.video_every)
-        print(f"vidéo : {out / 'rollout.mp4'} ({len(frames)} images)")
-    except Exception as e:  # imageio/ffmpeg absent : on garde au moins la première et la dernière vue
-        print(f"vidéo non écrite ({e}) ; images de début et de fin sauvegardées")
-        import imageio.v3 as iio
-        iio.imwrite(out / "first.png", frames[0])
-        iio.imwrite(out / "last.png", frames[-1])
+        print(f"serveur : {meta.get('ckpt_path')} chunk={meta.get('action_chunk_size')}", flush=True)
+        for e in range(args.episodes):
+            sim.reset()
+            sim.go_ready()
+            ep = {"episode": e}
+            if cube:
+                from cube_task import LIFT_SUCCESS, cube_in_base, sample_cube
+                sample_cube(sim, rng)
+                z0 = sim.object_pose("cube")[2, 3]
+                ep["cube_base"] = np.round(cube_in_base(sim), 4).tolist()
+            frames = [] if e < args.videos else None
+            ep["chunks"] = await run_chunks(ws, packer, sim, args, frames, args.max_steps)
+            if cube:
+                ep["lifted"] = round(float(sim.object_pose("cube")[2, 3] - z0), 4)
+                ep["success"] = bool(ep["lifted"] > LIFT_SUCCESS)
+            if frames:
+                save_video(frames, out / f"episode_{e:03d}.mp4", 30 / args.video_every)
+            log["episodes"].append(ep)
+            msg = f"épisode {e}: {len(ep['chunks'])} chunks"
+            if cube:
+                msg += f" | cube {ep['cube_base']} | soulevé {ep['lifted']*100:.1f} cm -> {'RÉUSSI' if ep['success'] else 'raté'}"
+            print(msg, flush=True)
+    if cube:
+        n_ok = sum(ep["success"] for ep in log["episodes"])
+        log["success_rate"] = n_ok / len(log["episodes"])
+        print(f"réussite {n_ok}/{len(log['episodes'])}")
+    (out / "log.json").write_text(json.dumps(log, indent=1))
     sim.close()
     return log
 
@@ -146,7 +173,12 @@ def main() -> None:
     ap.add_argument("--instruction", default="pick up the black part and put it in the box")
     ap.add_argument("--unnorm_key", default="UnifoLM_G1_Dex1")
     ap.add_argument("--head-view", dest="head_view", choices=["rec", "raw"], default="rec")
-    ap.add_argument("--chunks", type=int, default=10, help="nombre de requêtes au modèle")
+    ap.add_argument("--scene", choices=["piece", "cube"], default="piece",
+                    help="piece : scène d'origine (pièce Novares, non versionnée) ; cube : tâche de validation")
+    ap.add_argument("--episodes", type=int, default=1)
+    ap.add_argument("--max-steps", dest="max_steps", type=int, default=200, help="pas de 30 Hz par épisode")
+    ap.add_argument("--seed", type=int, default=7, help="tirage des cubes (les démos utilisent 1000)")
+    ap.add_argument("--videos", type=int, default=3, help="nombre d'épisodes filmés")
     ap.add_argument("--exec-steps", dest="exec_steps", type=int, default=20,
                     help="pas exécutés par chunk (30 = chunk entier)")
     ap.add_argument("--video-every", dest="video_every", type=int, default=2)

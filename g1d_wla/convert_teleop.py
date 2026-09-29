@@ -43,12 +43,16 @@ XYZ_RPY = ["x", "y", "z", "roll", "pitch", "yaw"]
 ARM = ["shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow", "wrist_roll", "wrist_pitch", "wrist_yaw"]
 LEG = ["hip_pitch", "hip_roll", "hip_yaw", "knee", "ankle_pitch", "ankle_roll"]
 
-#: images xr_teleoperate (tête binoculaire + 2 poignets) -> clés des datasets G1 Dex1
-IMAGE_KEYS = {
-    "color_0": "observation.images.head_stereo_left",
-    "color_1": "observation.images.head_stereo_right",
-    "color_2": "observation.images.wrist_left",
-    "color_3": "observation.images.wrist_right",
+#: images xr_teleoperate -> clés des datasets G1 Dex1. La téléop numérote les vues dans l'ordre
+#: tête (1 ou 2 yeux) puis poignets : 4 images = tête binoculaire, 3 = tête monoculaire (sim).
+IMAGE_LAYOUTS = {
+    4: {"color_0": "observation.images.head_stereo_left",
+        "color_1": "observation.images.head_stereo_right",
+        "color_2": "observation.images.wrist_left",
+        "color_3": "observation.images.wrist_right"},
+    3: {"color_0": "observation.images.head_stereo_left",
+        "color_1": "observation.images.wrist_left",
+        "color_2": "observation.images.wrist_right"},
 }
 
 
@@ -56,9 +60,9 @@ def _vec(n: int, names: list[str]) -> dict:
     return {"dtype": "float32", "shape": (n,), "names": names}
 
 
-def build_features() -> dict:
+def build_features(image_keys: dict) -> dict:
     img = {"dtype": "video", "shape": IMG_SHAPE, "names": ["height", "width", "channels"]}
-    f = {k: dict(img) for k in IMAGE_KEYS.values()}
+    f = {k: dict(img) for k in image_keys.values()}
     for kind in ("observation.state", "action"):
         for s in SIDES:
             f[f"{kind}.{s}_arm"] = _vec(7, ARM)
@@ -143,7 +147,12 @@ def main() -> None:
                     args.torso_pitch_index)
 
     fk = {s: ArmFK(s) for s in SIDES}
-    ds = LeRobotDataset.create(repo_id=args.repo_id, fps=FPS, features=build_features(), root=args.out_dir,
+    n_img = len(load_episode(ep_dirs[0])["steps"][0]["colors"])
+    if n_img not in IMAGE_LAYOUTS:
+        raise SystemExit(f"{n_img} images par pas : dispositions connues {sorted(IMAGE_LAYOUTS)}")
+    image_keys = IMAGE_LAYOUTS[n_img]
+    log.info("%d images par pas : %s", n_img, list(image_keys.values()))
+    ds = LeRobotDataset.create(repo_id=args.repo_id, fps=FPS, features=build_features(image_keys), root=args.out_dir,
                                robot_type="unitree_g1d", use_videos=True, vcodec=args.vcodec,
                                image_writer_threads=4)
     for n, ep_dir in enumerate(ep_dirs):
@@ -152,10 +161,10 @@ def main() -> None:
         arrays = convert_episode(ep, fk, args.torso_pitch_index, args.torso_pitch, args.base_height)
         for t, st in enumerate(ep["steps"]):
             frame = {k: v[t] for k, v in arrays.items()}
-            for ck, fk_name in IMAGE_KEYS.items():
+            for ck, fk_name in image_keys.items():
                 path = st["colors"].get(ck)
                 if path is None:
-                    raise ValueError(f"{ep_dir.name} pas {t} : image {ck} absente (tête binoculaire + 2 poignets attendus)")
+                    raise ValueError(f"{ep_dir.name} pas {t} : image {ck} absente")
                 img = np.asarray(Image.open(ep_dir / path).convert("RGB"))
                 if img.shape != IMG_SHAPE:
                     raise ValueError(f"{ep_dir.name} {ck} : {img.shape}, attendu {IMG_SHAPE}")

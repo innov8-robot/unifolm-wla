@@ -43,6 +43,8 @@ from g1d_wla.frames import (G1_PELVIS_TO_TORSO_XYZ, G1_STANDING_LEGS,  # noqa: E
 
 ASSETS = Path(__file__).resolve().parents[1] / "assets"
 SCENE_XML = ASSETS / "scene_g1d.xml"
+#: scène de validation : table + cube rouge de 4 cm, sans la pièce Novares (non versionnée) ni carton
+SCENE_CUBE_XML = ASSETS / "scene_g1d_cube.xml"
 URDF = ASSETS / "g1_d_dex1.urdf"
 
 SIDES = ("left", "right")
@@ -376,6 +378,15 @@ class G1DSim:
         T[:3, 3] = self.d.body(body).xpos
         return T
 
+    def place_object(self, body: str, xyz, yaw: float = 0.0) -> None:
+        """Pose un objet à corps libre en repère MONDE (position + lacet), vitesses nulles."""
+        j = self.m.body(body).jntadr[0]
+        qa, va = self.m.jnt_qposadr[j], self.m.jnt_dofadr[j]
+        self.d.qpos[qa:qa + 3] = xyz
+        self.d.qpos[qa + 3:qa + 7] = [np.cos(yaw / 2), 0.0, 0.0, np.sin(yaw / 2)]
+        self.d.qvel[va:va + 6] = 0.0
+        mujoco.mj_forward(self.m, self.d)
+
     def save_state(self) -> np.ndarray:
         """Instantané complet (qpos, qvel, act, ctrl, forces appliquées…) — le
         « rollback » de FlowPRO se fait en rechargeant cet état."""
@@ -389,4 +400,4 @@ class G1DSim:
         mujoco.mj_forward(self.m, self.d)
 
 
-__all__ = ["G1DSim", "CAMERAS", "SIDES", "ARM_JOINTS", "SCENE_XML", "URDF", "TORSO_PITCH", "G1_START_Q", "G1_STANDING_LEGS", "HEAD_VIEWS"]
+__all__ = ["G1DSim", "CAMERAS", "SIDES", "ARM_JOINTS", "SCENE_XML", "URDF", "TORSO_PITCH", "G1_START_Q", "G1_STANDING_LEGS", "HEAD_VIEWS", "SCENE_CUBE_XML"]

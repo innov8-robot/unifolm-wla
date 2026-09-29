@@ -2,7 +2,7 @@
 
 from .camera import SimCamera
 from .kinematics import ARM_JOINTS, ArmKinematics
-from .robot import CAMERAS, HEAD_VIEWS, SCENE_XML, SIDES, URDF, G1DSim
+from .robot import CAMERAS, HEAD_VIEWS, SCENE_CUBE_XML, SCENE_XML, SIDES, URDF, G1DSim
 
 __all__ = ["G1DSim", "ArmKinematics", "SimCamera", "CAMERAS", "SIDES", "ARM_JOINTS",
-           "SCENE_XML", "URDF", "HEAD_VIEWS"]
+           "SCENE_XML", "URDF", "HEAD_VIEWS", "SCENE_CUBE_XML"]
