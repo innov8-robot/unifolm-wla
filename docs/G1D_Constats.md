@@ -395,3 +395,52 @@ La ligne « LOW BODY » vient du type de bras `dual_with_legs` du Dex1. Le serve
 - **Table** **[INFÉRÉ]** : environ 0,07 m au-dessus du bassin G1, à ±3 cm, estimé depuis la hauteur des prises. Le bassin G1 est à environ 0,73 m du sol.
 - **G1-D réel** : avec la colonne en butée basse, son bassin virtuel est à environ 0,80 m. Pour être iso, sa table devrait être à environ 0,87 m, ou plus haut si la colonne monte.
 
+
+---
+
+## 10. Enregistrer un dataset G1-D pour WLA
+
+Constats du 29 septembre 2026, tirés du code de `xr_teleoperate` et de `unitree_lerobot`, branches principales.
+
+### Ce que fait xr_teleoperate
+
+- **[VÉRIFIÉ]** C'est l'outil de téléopération et d'enregistrement d'Unitree, avec un casque XR comme le Vision Pro ou le PICO 4.
+- **[VÉRIFIÉ]** Il connaît les Dex1 câblées en interne : `--ee dex1_internal`, qui pilote les pinces par les moteurs 31 et 33 de la commande bas niveau du G1.
+- **[VÉRIFIÉ]** `dex1_internal` exige `--arm G1_29` et interdit `--motion`.
+- **[VÉRIFIÉ]** Aucun `--arm` ne correspond au G1-D. Le code ne mentionne ni roues, ni colonne, ni G1-D.
+- **[INCONNU]** Le G1-D accepte-t-il la commande bas niveau du G1 29 DoF, avec 35 moteurs sur `rt/lowcmd` ? **À vérifier avant tout essai**, bras dégagés et gains faibles. Une mauvaise correspondance des indices moteurs commanderait les mauvais joints.
+
+### Ce qu'il enregistre
+
+Pour chaque pas, à 30 Hz par défaut :
+
+- **Images** : en JPEG. La tête binoculaire est coupée en deux moitiés **brutes**, gauche et droite. Les poignets sont ajoutés s'ils sont activés dans teleimager.
+- **État** : angles **mesurés** des deux bras et position des pinces.
+- **Action** : angles **commandés** des bras, sortie de l'IK, et commande des pinces.
+
+Il n'enregistre **pas** les poses effecteur, la pose du buste, la pose caméra, les jambes ni la commande de base.
+
+### Ce que produit unitree_lerobot
+
+- **[VÉRIFIÉ]** Le convertisseur public JSON → LeRobot produit l'**ancien format** : un vecteur `observation.state` unique et des vues `cam_left_high`. C'est le format des 11 datasets Dex1 inutilisables par la config WLA.
+- **[INFÉRÉ]** Le format WLA vient d'un pipeline Unitree non publié, qui recalcule les poses par cinématique directe. Le champ `recomputed_ee_valid` va dans ce sens, tout comme l'écart constant d'environ 1 cm entre commande et mesure, qui correspond à FK(angles commandés) comparé à FK(angles mesurés).
+
+### Chaîne proposée
+
+1. **Images** : teleimager, avec la tête binoculaire et les deux poignets, à 640×480 par vue.
+2. **Téléopération** : si le G1-D est compatible, lancer :
+   ```
+   python teleop_hand_and_arm.py --arm=G1_29 --ee=dex1_internal --record --frequency 30 --task-name <nom> --task-goal "<instruction>"
+   ```
+3. **Conversion** : un convertisseur maison, JSON → LeRobot v3 au format WLA, **à écrire** :
+   - effecteur état = FK des angles mesurés, effecteur action = FK des angles commandés, dans la base WLA et avec l'effecteur WLA de la section 9 ;
+   - euler `xyz` pour l'enregistrement ;
+   - jambes G1 debout, taille à [0, 0, tangage du buste], commande de base, poses buste et d435 ;
+   - noms de colonnes des datasets G1 Dex1 v3 ;
+   - vue de tête brute sous `head_stereo_left`, et rectifiée seulement si on calibre la stéréo.
+4. **Normalisation** : garder les statistiques précollectées du dépôt, clé `UnifoLM_G1_Dex1`. Ne pas les recalculer ni les fusionner.
+
+### Points iso propres au vrai G1-D
+
+- **[INCONNU]** Format de la stéréo de tête du G1-D. La fiche produit annonce 3840×1200, soit 1920×1200 par œil, en 16:10, et 115° de champ. Les données G1 sont en 640×480 par œil, en 4:3, avec environ 91° horizontal en rectifié. Il faudra probablement **recadrer au centre** au format 4:3 et au champ du G1, puis réduire en 640×480. À décider après calibration.
+- **[INFÉRÉ]** Table à environ 0,87 m avec la colonne en butée basse, et buste penché d'environ 0.166 rad, voir la section 9.
