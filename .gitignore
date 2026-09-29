@@ -280,3 +280,14 @@ unifolm_wla/scripts
 sim/smoke_out/
 # Meshes de la pièce Novares : possiblement confidentielles, gardées hors du dépôt
 sim/assets/meshes/*Novares*
+
+# --- Téléop (teleoperation/) ---
+# Les règles génériques du dépôt ignorent les .md des sous-dossiers, lib/ et les .npy :
+# on réintègre la doc, le CRC du SDK Unitree et les gabarits Brainco.
+!teleoperation/**/*.md
+!teleoperation/Tele_OP/unitree_sdk2_python/unitree_sdk2py/utils/lib/
+!teleoperation/Tele_OP/xr_teleoperate/teleop/brainco_templates/*.npy
+# Local à la machine ou parasite. Les enregistrements (utils/data/) sont déjà exclus par data/.
+teleoperation/.claude/
+teleoperation/**/.height_ref
+teleoperation/**/=1.21
