@@ -56,7 +56,7 @@ Par ordre de priorité. Cocher au fur et à mesure.
   - [ ] si possible, la calibration de la stéréo de tête.
 - [ ] **Installer le poste de démo** : une table à environ 0,87 m et le buste penché d'environ 0.166 rad.
 - [x] **Valider la chaîne complète en sim** : 150 démos expertes de la tâche cube, fine-tuning de 3 000 pas, puis **23 prises sur 30** positions jamais vues. Le zero-shot faisait 0 sur 20. Voir « Validation en sim » plus bas.
-- [x] **Améliorer la vitesse et réduire le nombre de démos, en sim** : chunks entiers, 28/30 en 151 pas au lieu de 222. Real-time chunking ajouté, 148 pas avec replanification tous les 10 pas. **25 démos suffisent**, 30/30. Test à 10 démos en cours.
+- [x] **Améliorer la vitesse et réduire le nombre de démos, en sim** : chunks entiers, 28/30 en 151 pas au lieu de 222. Real-time chunking ajouté, avec raccord doux : 25/30 en 151 pas en replanifiant tous les 10 pas. **10 démos suffisent** pour 25/30, et 25 démos donnent 30/30.
 - [ ] **Tâche Novares en sim** : prise peinte de mpc_any, 50 démos prêtes. Reste le fine-tuning et l'évaluation.
 - [ ] **Enregistrer, puis fine-tuner** : la recette est prête et testée sur `mon_test`. Elle tourne à environ 1,7 s par pas sur la RTX 5090. Le correctif du projecteur gelé est **vérifié** : 1 397 M paramètres entraînables, soit la tête DiT plus les 6,87 M du projecteur. Reste à enregistrer de vraies démos iso, voir les points précédents.
 
@@ -304,17 +304,25 @@ Détail et analyse : section 13 de `docs/G1D_Constats.md`. L'expert scripté ré
 | 150 | 10 pas + préfixe de 20 | 23 / 30 | **148** |
 | **25** | chunk entier | **30 / 30** | 173 |
 | 25 | 10 pas + préfixe de 20 | 20 / 30 | 146 |
+| **10** | chunk entier | **25 / 30** | 157 |
+| 10 | 10 pas + préfixe de 20 | 18 / 30 | 150 |
+| 10 | 10 pas + préfixe de 20 + raccord doux de 5 | **25 / 30** | **151** |
+| 10 | 15 pas + préfixe de 10 + raccord doux de 5 | 13 / 30 | 213 |
+| 10 | 25 pas + préfixe de 5 | 14 / 30 | 176 |
 
-- **Vitesse** : exécuter les chunks en entier est le plus simple et le plus fiable. Replanifier souvent ralentit le robot, sauf avec le **préfixe de real-time chunking**, que nous avons ajouté au serveur et à la tête d'action. C'est le réglage le plus rapide, mais un peu moins fiable.
-- **Nombre de démos** : **25 démos suffisent** pour cette tâche en sim, aussi bien que 150. Un test à 10 démos est en cours.
+- **Vitesse** : exécuter les chunks en entier est le plus simple et le plus fiable. Replanifier souvent ralentit le robot, sauf avec le **préfixe de real-time chunking**, que nous avons ajouté au serveur et à la tête d'action.
+- **Raccord doux** : avec un préfixe de 20 pas et un raccord doux de 5 pas, la replanification tous les 10 pas devient aussi fiable que les chunks entiers, tout en étant trois fois plus réactive.
+- **Préfixe court** : un préfixe court, de 5 ou 10 pas, dégrade nettement. Le préfixe doit couvrir l'essentiel du chunk.
+- **Nombre de démos** : **10 démos suffisent** pour 25/30 sur cette tâche en sim. 25 démos donnent 30/30, et 150 démos ne font pas mieux.
+- **Vitesse plafond** : on reste à environ 150 pas contre 127 pour l'expert, soit environ 18 % plus lent.
 - **Pour le vrai robot** : commencer par des chunks entiers et viser 25 à 50 démos pour une première tâche.
 
 ```bash
 # chunks entiers (fiable)
 MUJOCO_GL=egl $SIMPY sim/wla_client.py --scene cube --instruction "pick up the red cube" \
     --head-view raw --episodes 30 --max-steps 300 --exec-steps 30 --stop-on-success
-# replanification rapide avec préfixe (plus réactif)
-... --exec-steps 10 --rtc-prefix 20
+# replanification tous les 10 pas avec préfixe et raccord doux (aussi fiable, 3 fois plus réactif)
+... --exec-steps 10 --rtc-prefix 20 --rtc-soft 5
 ```
 
 ### Tâche Novares en sim : prise peinte

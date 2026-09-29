@@ -553,7 +553,21 @@ Même tâche cube et mêmes 30 positions d'évaluation que la section 12. Nouvel
 | 150 démos | 15 pas + préfixe de 15 | 24 / 30 | 160 |
 | 150 démos | 10 pas + préfixe de 20 | 23 / 30 | **148** |
 
-Le préfixe rend la replanification fréquente utilisable : à 10 pas par chunk, on passe de 8 à 23 réussites. C'est le réglage le plus rapide, mais il n'égale pas la fiabilité des chunks entiers.
+Le préfixe rend la replanification fréquente utilisable : à 10 pas par chunk, on passe de 8 à 23 réussites. Imposé à la lettre, il n'égale pas encore la fiabilité des chunks entiers.
+
+**[VÉRIFIÉ]** **Raccord doux**, comme dans la méthode publiée (Black et al., 2025) : au-delà du préfixe, le poids d'inpainting décroît exponentiellement sur quelques pas, en prolongeant la dernière action connue. Option `rtc_soft` du serveur, `--rtc-soft` du client. Mesures sur le modèle à 10 démos :
+
+| Réglage | Réussites | Pas médian |
+|---|---|---|
+| chunk entier, sans préfixe | 25 / 30 | 157 |
+| 10 pas + préfixe de 20 | 18 / 30 | 150 |
+| 10 pas + préfixe de 20 + raccord doux de 5 | **25 / 30** | **151** |
+| 15 pas + préfixe de 10 + raccord doux de 5 | 13 / 30 | 213 |
+| 25 pas + préfixe de 5 | 14 / 30 | 176 |
+
+- **Raccord doux** : avec un préfixe de 20, il rattrape la fiabilité des chunks entiers, en replanifiant trois fois plus souvent et un peu plus vite.
+- **[INFÉRÉ] Préfixe court** : un préfixe de 5 ou 10 pas dégrade nettement. Le modèle doit alors reprédire une grande partie du geste en cours sans connaître sa vitesse. Le préfixe doit couvrir l'essentiel du chunk.
+- **Vitesse plafond** : environ 150 pas contre 127 pour l'expert, dans tous les bons réglages. Le reste de l'écart vient probablement des reprises à chaque chunk, et de la lenteur prudente d'un modèle qui moyenne ses démos.
 
 ### Nombre de démos
 
@@ -565,11 +579,13 @@ Le préfixe rend la replanification fréquente utilisable : à 10 pas par chunk,
 | **25** | chunk entier | **30 / 30** | 173 |
 | 150 | 10 pas + préfixe de 20 | 23 / 30 | 148 |
 | 25 | 10 pas + préfixe de 20 | 20 / 30 | 146 |
+| **10** | chunk entier | **25 / 30** | 157 |
+| 10 | 10 pas + préfixe de 20 + raccord doux de 5 | 25 / 30 | 151 |
 
 - **Données** : pour cette tâche, **25 démos suffisent**, et font aussi bien que 150.
 - **Vitesse** : avec 25 démos, le modèle est un peu plus lent en chunks entiers, 173 pas contre 151.
 - **Perte** : elle descend plus bas avec 25 démos, jusqu'à 0,0003, ce qui est cohérent avec un jeu plus petit, mieux mémorisé.
-- **Test à 10 démos** : en cours au moment de la rédaction, mené par une autre session.
+- **10 démos**, même recette : **25 / 30** en chunks entiers, en 157 pas médians. Même résultat avec le préfixe et le raccord doux, en 151 pas.
 
 ### Limites
 
@@ -579,8 +595,8 @@ Le préfixe rend la replanification fréquente utilisable : à 10 pas par chunk,
 
 ### Recommandations pour le vrai robot
 
-- **Point de départ** : chunks entiers, `--exec-steps 30` sans préfixe, pour la fiabilité. Passer à 10 pas + préfixe de 20 si la réactivité ou la vitesse comptent plus.
-- **Nombre de démos** : viser **25 à 50 démos** pour une première tâche plutôt que 200, puis ajuster selon le taux de réussite. Le briefing prévoyait 50 à 200.
+- **Point de départ** : chunks entiers, `--exec-steps 30` sans préfixe, pour la fiabilité. Pour plus de réactivité, passer à `--exec-steps 10 --rtc-prefix 20 --rtc-soft 5`, aussi fiable en sim. Ne pas utiliser de préfixe court.
+- **Nombre de démos** : en sim, 10 démos donnent déjà 25/30 et 25 démos 30/30. Sur le robot, avec des démos humaines plus variées, viser **25 à 50 démos** pour une première tâche plutôt que 200, puis ajuster selon le taux de réussite. Le briefing prévoyait 50 à 200.
 
 ---
 

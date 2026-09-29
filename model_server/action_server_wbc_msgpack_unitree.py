@@ -288,6 +288,14 @@ class ActionServerWBCMsgpack:
             prefix[:d, sl] = (rel6 - norm["action_offset"][sl]) / (norm["action_scale"][sl] + 1e-8)
         weights = np.zeros(H, dtype=np.float32)
         weights[:d] = 1.0
+        # raccord doux (RTC, Black et al. 2025) : au-delà du préfixe, poids décroissant
+        # exponentiellement sur ``rtc_soft`` pas, en prolongeant la dernière action connue
+        soft = int(obs.get("rtc_soft", 0) or 0)
+        if soft > 0 and d < H:
+            n = min(soft, H - d)
+            k = np.arange(1, n + 1, dtype=np.float32)
+            weights[d:d + n] = np.exp(-3.0 * k / n)
+            prefix[d:d + n] = prefix[d - 1]
         return prefix, weights
 
     def _build_example(self, obs: dict) -> dict:

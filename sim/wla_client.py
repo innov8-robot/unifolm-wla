@@ -88,6 +88,7 @@ async def run_chunks(ws, packer, sim, args, frames, max_steps, done=None) -> tup
         if args.rtc_prefix > 0 and prev_exec is not None:
             # real-time chunking : imposer la suite du chunk précédent (voir le serveur)
             obs["rtc_executed"], obs["rtc_prefix"] = prev_exec, args.rtc_prefix
+            obs["rtc_soft"] = args.rtc_soft
         t0 = time.perf_counter()
         await ws.send(packer.pack({"type": "get_action", "obs": obs}))
         raw = await ws.recv()
@@ -201,6 +202,8 @@ def main() -> None:
     ap.add_argument("--rtc-prefix", dest="rtc_prefix", type=int, default=0,
                     help="real-time chunking : pas du chunk précédent imposés en tête du suivant (0 = off). "
                          "Il faut --exec-steps + --rtc-prefix <= 30")
+    ap.add_argument("--rtc-soft", dest="rtc_soft", type=int, default=0,
+                    help="raccord doux : pas après le préfixe à poids décroissant (0 = préfixe dur)")
     ap.add_argument("--stop-on-success", dest="stop_on_success", action="store_true",
                     help="arrêter l'épisode dès la réussite (évaluations rapides)")
     ap.add_argument("--exec-steps", dest="exec_steps", type=int, default=20,
