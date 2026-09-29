@@ -147,7 +147,7 @@ class ActionServerWBCMsgpack:
     def __init__(self, args):
         self.args = args
         self.instruction = args.instruction
-        logging.info("Loading model from: %s (backend=%s)", args.ckpt_path)
+        logging.info("Loading model from: %s", args.ckpt_path)
         self.model = baseframework.from_pretrained(args.ckpt_path)
         if args.use_bf16:
             self.model = self.model.to(torch.bfloat16)

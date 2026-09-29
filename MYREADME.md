@@ -32,22 +32,22 @@ Ce fork adapte **UnifoLM-WLA-1.0** d'Unitree au **G1-D** : robot sur base roulan
 | Sim MuJoCo du G1-D calée sur l'entraînement | **Fait**, 22 vérifications vertes |
 | Téléop intégrée au fork, sans Orbbec, env `g1d_teleop` | **Fait**, testée sans robot |
 | Caméra stéréo stock remise sur le robot, config teleimager | **À faire**, sur le robot |
-| Convertisseur d'enregistrements → format WLA | **À écrire** |
-| Client sim ou robot ↔ serveur WLA, test zero-shot | **À écrire** |
-| Poids UnifoLM-WLA-1.0-Base téléchargés | **À faire** |
+| Convertisseur d'enregistrements → format WLA | **Fait**, deux hypothèses à valider |
+| Client sim ↔ serveur WLA, test zero-shot | **Fait** en sim, pas de prise réussie |
+| Poids UnifoLM-WLA-1.0-Base téléchargés | **Fait** |
 | Correction du gel du robot-state projector pour le fine-tuning | **À tester** |
 | Fine-tuning sur nos démos | Pas commencé |
-| Push de `g1d-port` sur GitHub | **À faire** : `git push -u origin g1d-port` |
+| Push de `g1d-port` sur GitHub | **Fait**, à refaire après chaque étape |
 
 ### TODO
 
 Par ordre de priorité. Cocher au fur et à mesure.
 
-- [ ] **Pousser `g1d-port` sur GitHub** : `git push -u origin g1d-port`.
-- [ ] **Remettre la stéréo stock sur le robot** : la config teleimager du robot déclare encore l'Orbbec. Sans ça, tout nouvel enregistrement sera au mauvais format.
-- [ ] **Télécharger les poids et installer l'env du modèle** : ça passe par `uv sync` et le téléchargement du modèle Base. Rien n'est lancé côté modèle pour l'instant.
-- [ ] **Écrire le client de test** : il relierait la sim au serveur WLA. Il enverrait les trois images, l'état au format WLA et l'instruction, puis appliquerait les actions reçues. Ça donnerait un premier test zero-shot sans robot, avec les deux vues de tête.
-- [ ] **Écrire le convertisseur** : il transformerait les enregistrements de la téléop au format WLA. `mon_test`, avec ses 51 épisodes au bon format stéréo, servirait de premier jeu de test.
+- [x] **Pousser `g1d-port` sur GitHub** : fait le 29 septembre 2026. Pousser à nouveau après chaque étape.
+- [ ] **Remettre la stéréo stock sur le robot** : la config teleimager du robot déclare encore l'Orbbec. Sans ça, tout nouvel enregistrement sera au mauvais format. *Procédure et bloc de config prêts : `teleoperation/REAMDEG1D.md`, section « Remettre la caméra stéréo stock ». Reste à l'appliquer sur le robot.*
+- [x] **Télécharger les poids et installer l'env du modèle** : fait. Poids dans `playground/Pretrained_models/UnifoLM-WLA-1.0-Base/`, env `.venv`, torch 2.8 CUDA 12.8 validé sur la RTX 5090. Sans flash-attention : le code bascule sur l'attention standard de PyTorch.
+- [x] **Écrire le client de test** : `sim/wla_client.py`, boucle fermée sim ↔ serveur WLA qui fonctionne, environ 0,4 s par inférence. Premier zero-shot : vue rectifiée, le modèle reste quasi immobile. Vue brute, il approche la main droite et ferme la pince, mais 12 cm trop haut. Un essai par vue, donc non concluant. *La correspondance de pince sim ↔ Dex1 y est supposée linéaire.*
+- [x] **Écrire le convertisseur** : `g1d_wla/convert_teleop.py`, testé sur 2 épisodes de `mon_test`, lu sans erreur par le dataloader WLA avec `configs/g1d.yaml`. *Deux hypothèses à valider sur le robot : l'indice du tangage du buste et la hauteur de bassin équivalente.*
 - [ ] **Mesurer sur le robot** :
   - [ ] la correspondance entre la pince et l'unité Dex1 de WLA ;
   - [ ] le contenu des 35 moteurs enregistrés, pour savoir s'ils contiennent le tangage du buste ;
@@ -95,7 +95,7 @@ unifolm-wla/
 |---|---|---|
 | `g1d_teleop`, conda | téléopération et enregistrement | `bash teleoperation/setup_env.sh` |
 | `unitree_lerobot`, conda | sim MuJoCo : mujoco 3.x, pinocchio 3.x, imageio | déjà présent sur la machine |
-| env `uv` du projet | modèle WLA : entraînement, serveur | `uv sync`, **pas encore fait** |
+| env `uv` du projet, `.venv` | modèle WLA : entraînement, serveur, convertisseur | voir ci-dessous |
 
 ### Téléop
 
@@ -113,9 +113,12 @@ conda activate g1d_teleop
 ### Modèle WLA
 
 ```bash
-uv sync
+# ⚠ hors de conda : sinon uv prend le Python 3.13 et le compilateur de conda, et evdev ne compile pas
+env -i HOME=$HOME PATH=/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin LANG=C.UTF-8 uv sync --python /usr/bin/python3.12
 hf download unitreerobotics/UnifoLM-WLA-1.0-Base --local-dir playground/Pretrained_models/UnifoLM-WLA-1.0-Base
 ```
+
+flash-attention n'est pas installé : le code bascule tout seul sur l'attention standard de PyTorch.
 
 Voir `docs/train_action_expert_en.md` pour l'installation complète.
 
@@ -210,7 +213,20 @@ Fine-tuning WLA, VLM gelé ──► checkpoint ──► model_server ◄──
  (examples/unifolm_wla/train_files/run_finetune_mmdit_frozen_vlm.sh)
 ```
 
-### Convertisseur à écrire, spécification
+### Convertisseur
+
+```bash
+.venv/bin/python -m g1d_wla.convert_teleop \
+    --raw-dir teleoperation/Tele_OP/xr_teleoperate/teleop/utils/data/mon_test \
+    --out-dir playground/Datasets/g1d/mon_test --repo-id innov8/g1d_mon_test
+```
+
+- Le dataset produit se range sous `playground/Datasets/g1d/<tâche>/`, que lit `unifolm_wla/dataloader/multi_source_dataset/configs/g1d.yaml`.
+- La source y est nommée `UnifoLM_G1_Dex1`, pour réutiliser les normaliseurs du modèle Base.
+- Les constantes de repère sont dans `g1d_wla/frames.py`, source unique partagée avec la sim.
+- **Pince** : la téléop enregistre déjà l'angle moteur Dex1, de 0 fermée à 5,4 ouverte. C'est l'unité de l'entraînement, donc aucune conversion n'est faite.
+
+Ce qu'il produit :
 
 Voir la section 10 de `docs/G1D_Constats.md`. Il doit produire :
 
@@ -220,8 +236,23 @@ Voir la section 10 de `docs/G1D_Constats.md`. Il doit produire :
 - **Taille** : `[0, 0, tangage du buste]`.
 - **Commande de base** : vitesses de la base, et hauteur de bassin équivalente à la colonne.
 - **Caméras** : `head_stereo_left` pour l'œil gauche brut, `head_stereo_left_rec` si on calibre la stéréo, `wrist_left` et `wrist_right`.
-- **Pince** : dans l'unité Dex1 des datasets, où la valeur **monte à l'ouverture**, de 0 à 5,5 environ. La correspondance reste à calibrer.
+- **Pince** : unité Dex1, copiée telle quelle.
 - **Normalisation** : statistiques précollectées du dépôt, clé `UnifoLM_G1_Dex1`. **Ne pas les recalculer.**
+
+### Test zero-shot en sim
+
+```bash
+# 1. serveur, env uv
+.venv/bin/python -m model_server.action_server_wbc_msgpack_unitree \
+    --ckpt_path playground/Pretrained_models/UnifoLM-WLA-1.0-Base/checkpoints/model.safetensors \
+    --unnorm_key UnifoLM_G1_Dex1 --port 8600
+# 2. client, env de la sim ; sorties dans sim/wla_out/, hors git
+MUJOCO_GL=egl ~/miniconda3/envs/unitree_lerobot/bin/python sim/wla_client.py \
+    --instruction "pick up the black part and put it in the box" --chunks 10 --head-view raw
+```
+
+- Le serveur occupe environ 11,6 Go de mémoire graphique.
+- `--debug_save_dir` écrit à chaque requête les images reçues et le chunk prédit.
 
 ### Fine-tuning
 
@@ -268,6 +299,7 @@ Référence complète : section 9 de `docs/G1D_Constats.md`.
 - **Divergence silencieuse** : MuJoCo remet la sim à zéro sans prévenir. Le smoke test le détecte.
 - **Mains Brainco, Inspire ou Dex3** : il faut l'env avec `WITH_DEX_RETARGETING=1`.
 - **Cache de l'IK** : il n'est pas versionné. Le premier lancement sur un clone neuf est plus lent.
+- **Sans flash-attention** : le VLM basculait déjà sur l'attention de PyTorch, mais pas la tête d'action DiT, qui plantait. Elle est corrigée dans `mmdit.py` et bascule maintenant aussi. Rien ne change si flash-attention est installé.
 
 ---
 

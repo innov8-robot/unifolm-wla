@@ -444,3 +444,32 @@ Il n'enregistre **pas** les poses effecteur, la pose du buste, la pose caméra, 
 
 - **[INCONNU]** Format de la stéréo de tête du G1-D. La fiche produit annonce 3840×1200, soit 1920×1200 par œil, en 16:10, et 115° de champ. Les données G1 sont en 640×480 par œil, en 4:3, avec environ 91° horizontal en rectifié. Il faudra probablement **recadrer au centre** au format 4:3 et au champ du G1, puis réduire en 640×480. À décider après calibration.
 - **[INFÉRÉ]** Table à environ 0,87 m avec la colonne en butée basse, et buste penché d'environ 0.166 rad, voir la section 9.
+
+---
+
+## 11. Premier test zero-shot en sim (29 septembre 2026)
+
+**[VÉRIFIÉ]** La boucle fermée sim ↔ serveur WLA fonctionne avec le modèle Base :
+
+- **Inférence** : environ 0,4 s par requête, sur une RTX 5090 Laptop, sans flash-attention.
+- **Réception** : le serveur reçoit les trois images dans le bon sens et avec les bonnes couleurs, d'après son image de debug.
+- **Exécution** : aucune cible IK refusée sur 10 chunks de 20 pas.
+
+**[VÉRIFIÉ]** Un essai par vue de tête, instruction « pick up the black part and put it in the box » :
+
+| Vue de tête | Comportement |
+|---|---|
+| Rectifiée | trajectoires presque immobiles, main droite qui remonte d'environ 6 cm, pince ouverte |
+| Brute | main droite rapprochée de 4 cm vers la pièce, puis pince **fermée**, mais environ 12 cm trop haut |
+
+**[INFÉRÉ]** Le modèle réagit plus à la vue brute, majoritaire dans les données publiques. **Non concluant** : un seul essai par vue, avec un échantillonnage aléatoire.
+
+Écarts qui expliquent probablement l'échec :
+
+- **Scène** : rendu de sim, pièce inconnue, décor différent.
+- **Caméras de poignet** : pas calées.
+- **Pince** : correspondance supposée linéaire avec l'unité Dex1.
+- **Buste** : réglé à 0.166 rad dans la sim, alors que `mon_test` montre environ 0,09 rad sur le robot, si l'indice moteur est le bon.
+
+Le fine-tuning sur nos démos reste la voie attendue. Voir la section 5 du briefing.
+

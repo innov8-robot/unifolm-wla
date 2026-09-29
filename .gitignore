@@ -291,3 +291,6 @@ sim/assets/meshes/*Novares*
 teleoperation/.claude/
 teleoperation/**/.height_ref
 teleoperation/**/=1.21
+
+# Sorties du client de test WLA (vidéos, journaux)
+sim/wla_out/

@@ -10,6 +10,12 @@ from diffusers.models.embeddings import (
     Timesteps,
 )
 from diffusers.models.attention_dispatch import dispatch_attention_fn
+
+try:  # flash-attn est optionnel : sans lui, la tête DiT bascule sur l'attention native de PyTorch
+    import flash_attn  # noqa: F401
+    _HAS_FLASH_ATTN = True
+except ImportError:
+    _HAS_FLASH_ATTN = False
 from diffusers.models.attention_dispatch import AttentionBackendName
 from diffusers.models.embeddings import get_1d_rotary_pos_embed
 from diffusers.models.normalization import AdaLayerNormContinuous, RMSNorm
@@ -259,7 +265,12 @@ class QwenDoubleStreamAttnProcessor2_0:
         orig_dtype = joint_query.dtype
         flash_backends = (AttentionBackendName.FLASH, AttentionBackendName.FLASH_VARLEN)
         default_backend = AttentionBackendName.FLASH if attention_mask is None else AttentionBackendName.FLASH_VARLEN
+        if self._attention_backend is None and not _HAS_FLASH_ATTN:
+            default_backend = AttentionBackendName.NATIVE
         backend = self._attention_backend or default_backend
+        if backend == AttentionBackendName.NATIVE and attention_mask is not None and attention_mask.dim() == 2:
+            # masque de remplissage des clés [B, S] -> [B, 1, 1, S] pour scaled_dot_product_attention
+            attention_mask = attention_mask[:, None, None, :].to(torch.bool)
 
         if backend in flash_backends:
             q = joint_query.to(torch.bfloat16)
