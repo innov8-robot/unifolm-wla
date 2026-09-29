@@ -10,7 +10,7 @@ Mêmes niveaux de confiance que le briefing :
 
 Sauf mention contraire, tous les constats viennent d'une **lecture statique du code**. Rien n'a encore été exécuté, ni sur données réelles ni sur le robot.
 
-Dernière mise à jour : 29 septembre 2026.
+Dernière mise à jour : 29 septembre 2026, sur la base du commit `406faa3` d'Unitree, qui inclut la PR #14 sur le LoRA.
 
 ---
 
@@ -47,6 +47,16 @@ trainer:
 À valider au démarrage d'un entraînement avec la sortie de `print_trainable_parameters`. Les paramètres `robot_state_projector.net.*` doivent y apparaître comme entraînables, et le reste du VLM comme gelé.
 
 **À corriger avant tout fine-tuning G1-D.**
+
+### Le fine-tuning LoRA ne change rien
+
+**[VÉRIFIÉ]** Unitree a publié le fine-tuning LoRA après le briefing, dans la PR #14. Le briefing le disait non publié.
+
+- La config [mmdit_lora_frozen_vlm.yaml](../unifolm_wla/config/training/mmdit_lora_frozen_vlm.yaml) gèle toujours `qwen_vl_interface` en entier.
+- Les adaptateurs LoRA ne visent que les couches d'attention de la tête DiT.
+- Le gel épargne désormais les paramètres dont le nom contient `lora_`. Le projecteur n'en a aucun, donc **il reste gelé en LoRA aussi**.
+
+**[INFÉRÉ]** En LoRA, la bibliothèque peft gèle aussi les poids de base de la tête DiT. Seuls les adaptateurs s'entraîneraient alors. À confirmer avec `print_trainable_parameters`.
 
 ---
 
@@ -167,6 +177,7 @@ Les images sont redimensionnées en 336×448 (hauteur × largeur). Source : [uni
 - **Chemin par défaut cassé** : `train_unifolm_wla.py` et `QWen3.py` ont une valeur par défaut `--config_yaml` qui pointe vers un fichier SimplerEnv absent. Toujours passer la config explicitement.
 - **Options sans effet** : le script d'entraînement from scratch passe des options `omnivggt_fusion`, `action_tokenizer`, `rtc` et `max_delay`. Aucun code ne les lit.
 - **Docstring fausse** : celle de `eval_local_episode.py` cite un chemin `examples/pretrain/...` qui n'existe pas. Le bon chemin est `examples/unifolm_wla/eval_files/unitree/eval_local_episode.py`.
+- **Config de debug supprimée** : `unitree_debug.yaml` a été retiré par Unitree dans la PR #14.
 - **Pondération des sources** : le dataloader échantillonne proportionnellement au nombre d'échantillons et ignore le champ `weight`. C'est déjà noté dans le briefing, section 6.
 
 ---
