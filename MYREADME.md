@@ -10,7 +10,7 @@ Ce fork adapte **UnifoLM-WLA-1.0** d'Unitree au **G1-D** : robot sur base roulan
 
 ## Sommaire
 
-1. [Où en est-on](#1-où-en-est-on)
+1. [Où en est-on](#1-où-en-est-on) et [TODO](#todo)
 2. [Arborescence](#2-arborescence)
 3. [Environnements](#3-environnements)
 4. [Simulation MuJoCo](#4-simulation-mujoco)
@@ -38,6 +38,23 @@ Ce fork adapte **UnifoLM-WLA-1.0** d'Unitree au **G1-D** : robot sur base roulan
 | Correction du gel du robot-state projector pour le fine-tuning | **À tester** |
 | Fine-tuning sur nos démos | Pas commencé |
 | Push de `g1d-port` sur GitHub | **À faire** : `git push -u origin g1d-port` |
+
+### TODO
+
+Par ordre de priorité. Cocher au fur et à mesure.
+
+- [ ] **Pousser `g1d-port` sur GitHub** : `git push -u origin g1d-port`.
+- [ ] **Remettre la stéréo stock sur le robot** : la config teleimager du robot déclare encore l'Orbbec. Sans ça, tout nouvel enregistrement sera au mauvais format.
+- [ ] **Télécharger les poids et installer l'env du modèle** : ça passe par `uv sync` et le téléchargement du modèle Base. Rien n'est lancé côté modèle pour l'instant.
+- [ ] **Écrire le client de test** : il relierait la sim au serveur WLA. Il enverrait les trois images, l'état au format WLA et l'instruction, puis appliquerait les actions reçues. Ça donnerait un premier test zero-shot sans robot, avec les deux vues de tête.
+- [ ] **Écrire le convertisseur** : il transformerait les enregistrements de la téléop au format WLA. `mon_test`, avec ses 51 épisodes au bon format stéréo, servirait de premier jeu de test.
+- [ ] **Mesurer sur le robot** :
+  - [ ] la correspondance entre la pince et l'unité Dex1 de WLA ;
+  - [ ] le contenu des 35 moteurs enregistrés, pour savoir s'ils contiennent le tangage du buste ;
+  - [ ] la hauteur de colonne, à ajouter à l'enregistrement ;
+  - [ ] si possible, la calibration de la stéréo de tête.
+- [ ] **Installer le poste de démo** : une table à environ 0,87 m et le buste penché d'environ 0.166 rad.
+- [ ] **Enregistrer, puis fine-tuner** : il faudra vérifier au lancement que le correctif du projecteur gelé fonctionne.
 
 ---
 
