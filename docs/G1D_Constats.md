@@ -579,6 +579,10 @@ Le préfixe rend la replanification fréquente utilisable : à 10 pas par chunk,
 - **Perte** : elle descend plus bas avec 25 démos, jusqu'à 0,0003, ce qui est cohérent avec un jeu plus petit, mieux mémorisé.
 - **10 démos**, même recette : **25 / 30** en chunks entiers, en 157 pas médians. Même résultat avec le préfixe et le raccord doux, en 151 pas.
 
+### Non-régression après la brique RECAP (30 septembre 2026)
+
+**[VÉRIFIÉ]** Même checkpoint à 10 démos, mêmes 30 positions, code après la brique RECAP, sans option d'avantage : chunk entier **26 / 30** en 150 pas, contre 25 / 30 en 157 avant ; préfixe de 20 et raccord doux de 5 **24 / 30** en 155 pas, contre 25 / 30 en 151 avant. Les écarts restent dans le bruit, environ ±3 sur 30 : RECAP n'a rien cassé.
+
 ### Limites
 
 - **Tâche simple** : une seule tâche, une seule main, une zone de 10 × 14 cm, un expert scripté parfaitement régulier. Des démos humaines en téléop seront plus variées et plus bruitées. Il en faudra probablement plus.
