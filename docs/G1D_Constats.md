@@ -689,6 +689,27 @@ La comparaison entre les étapes 5 et 6 dira si le gain vient du conditionnement
 - **Sécurité** : vitesse de la cible bornée, 0,10 m/s par défaut. Les bras tiennent leur pose hors essai.
 - **Latence** : une requête au modèle, environ 0,4 s, bloque la boucle. Les bras tiennent leur dernière cible pendant ce temps. Préchargement asynchrone possible plus tard.
 
+### Résultats de la 1re itération (30 septembre 2026)
+
+**[VÉRIFIÉ, sim]** 30 épisodes par évaluation, graine 7, chunk entier de 30 pas :
+
+| Modèle | Zone « à gauche » | Zone d'origine |
+|---|---|---|
+| Référence : 10 démos | 18 / 30, 170 pas | 27 / 30, 157 pas |
+| RECAP, « Advantage: positive » | 14 / 30, 156 pas | 23 / 30, 145 pas |
+| Témoin : mêmes données, sans avantage | 13 / 30, 165 pas | 24 / 30, 148 pas |
+
+- **Rollouts** : 17 / 40 réussis par la politique seule, 20 corrections de l'opérateur simulé.
+- **Modèle de valeur** : perte d'entraînement quasi nulle, mais erreur de 128 pas en moyenne sur les épisodes tenus hors entraînement (72 à 169 selon le pli). Il apprend par cœur 50 épisodes.
+- **Étiquetage** : 53 % des pas de la politique positifs.
+
+**Lecture** :
+- RECAP et témoin sont à égalité, à l'écart de bruit près (environ ±3 sur 30) : le conditionnement n'apporte rien ici, ce qui s'explique par des étiquettes proches du hasard.
+- Les deux font moins bien que la référence : ajouter des rollouts, dont les pas ratés de la politique, dégrade l'imitation.
+- Gain de vitesse léger (156 contre 170 pas), dû aux corrections de l'expert dans les données.
+
+**Pistes** pour une 2e itération : plus de rollouts ; une valeur plus simple (issue de l'épisode, ou pas restants sans image) ; affiner depuis le modèle n10 plutôt que depuis Base ; exclure du témoin les pas négatifs pour isoler l'effet du filtrage.
+
 **[INCONNU]** Plusieurs choix restent ouverts, et le blog de Delta ne les donne pas non plus :
 - le seuil d'étiquetage ;
 - la taille du jeu de rollouts ;

@@ -38,7 +38,7 @@ Ce fork adapte **UnifoLM-WLA-1.0** d'Unitree au **G1-D** : robot sur base roulan
 | Correction du gel du robot-state projector pour le fine-tuning | **Fait et vérifié** |
 | Validation de toute la chaîne en sim, tâche cube | **Fait** : 23/30 après fine-tuning, contre 0/20 en zero-shot |
 | Tâche Novares en sim (prise peinte) | **Fait** : 27/30 avec 50 démos, 22/30 avec 25, 27/30 avec 10 |
-| Boucle RECAP / Delta-0 | Brique implémentée, audit corrigé. Expérience en sim en cours (zone « à gauche ») |
+| Boucle RECAP / Delta-0 | Brique implémentée, audit corrigé. 1re itération en sim : **pas de gain** (14/30 contre 18/30 pour la référence), modèle de valeur trop faible |
 | Mode politique avec correction en delta dans la téléop | Fait, testé hors robot, **non validé sur le robot** |
 | Fine-tuning sur de vraies démos | Recette prête et validée en sim |
 | Push de `g1d-port` sur GitHub | **Fait**, à refaire après chaque étape |
@@ -61,7 +61,7 @@ Par ordre de priorité. Cocher au fur et à mesure.
 - [x] **Valider la chaîne complète en sim** : 150 démos expertes de la tâche cube, fine-tuning de 3 000 pas, puis **23 prises sur 30** positions jamais vues. Le zero-shot faisait 0 sur 20. Voir « Validation en sim » plus bas.
 - [x] **Améliorer la vitesse et réduire le nombre de démos, en sim** : chunks entiers, 28/30 en 151 pas au lieu de 222. Real-time chunking ajouté, avec raccord doux : 25/30 en 151 pas en replanifiant tous les 10 pas. **10 démos suffisent** pour 25/30, et 25 démos donnent 30/30.
 - [x] **Tâche Novares en sim** : prise peinte de mpc_any. 50 démos : **27/30**, à la vitesse de l'expert. 25 démos : 22/30. 10 démos : 27/30.
-- [ ] **Boucle RECAP / Delta-0 (amélioration par essais et corrections)** : brique implémentée, auditée et corrigée. Expérience en sim en cours dans la zone « à gauche », où le modèle à 10 démos ne fait que 7/15 (`sim/experiments/queue_recap.sh`, journal `playground/queue_logs/recap.log`). Voir section 15 des constats.
+- [ ] **Boucle RECAP / Delta-0 (amélioration par essais et corrections)** : brique implémentée, auditée et corrigée. 1re itération en sim dans la zone « à gauche » (`sim/experiments/queue_recap.sh`) : référence 18/30, RECAP 14/30, témoin sans avantage 13/30. Pas d'effet du conditionnement, et ajouter les rollouts dégrade. Cause probable : modèle de valeur qui apprend par cœur (erreur 128 pas hors entraînement). Pistes : plus de rollouts, valeur plus simple (succès/échec de l'épisode), fine-tuning depuis n10 plutôt que depuis Base. Voir section 15 des constats.
 - [ ] **Essayer le mode politique avec corrections sur le robot** : `--policy-uri` dans la téléop, procédure dans `teleoperation/REAMDEG1D.md`. Corrigé après audit de sécurité et testé hors robot. Premier essai : vitesse bridée et arrêt d'urgence à portée.
 - [ ] **Enregistrer, puis fine-tuner** : la recette est prête et testée sur `mon_test`. Elle tourne à environ 1,7 s par pas sur la RTX 5090. Le correctif du projecteur gelé est **vérifié** : 1 397 M paramètres entraînables, soit la tête DiT plus les 6,87 M du projecteur. Reste à enregistrer de vraies démos iso, voir les points précédents.
 
