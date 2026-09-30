@@ -679,6 +679,8 @@ Scène d'empilement corrigée (`scene_g1d_stack.xml`, pièces retournées de 180
 
   Le modèle d'empilement reproduit mal ses propres démos : 2 fois moins précis que le modèle Novares, avec des pointes à 5–11 cm pendant le transfert articulaire et le transport, et un instant de fermeture ou d'ouverture de la pince souvent décalé. Presque aussi mauvais sur des démos non vues : ce n'est pas du sur-apprentissage.
 - **[INFÉRÉ] Cause probable : sous-apprentissage.** 3000 pas × lot de 2 = 6000 exemples vus, soit environ 4 passages sur les 1 500 images du jeu Novares n10, mais 0,2 passage sur les 30 800 images du jeu d'empilement n100 (0,8 pour n25). La perte d'entraînement, bruitée, ne le montrait pas.
+- **[VÉRIFIÉ, sim] 25 démos, 12 000 pas (~3 passages) : toujours 0 / 30**, mais la boucle ouverte passe à **8,3 mm** (contre 16 mm), proche du modèle Novares (6,9 mm). En boucle fermée : 11 / 30 pièces transportées et posées sur le support (60 à 105 mm et 36 à 126° de la pose emboîtée, une à 16 mm), 17 / 30 saisies ratées, 2 pièces tombées.
+- **[INFÉRÉ]** Le modèle reproduit maintenant ses démos à peu près aussi bien que celui de Novares : ce qui reste est l'accumulation d'erreurs en boucle fermée (il sort des états vus dans les démos et ne sait pas se rattraper). Pistes : corrections dans la boucle (rollouts + opérateur simulé, type DAgger / RECAP, déjà outillé par `sim/recap_rollouts.py`), trajectoires d'expert plus simples (le transfert articulaire est la phase la plus mal reproduite), démos plus variées (bruit injecté dans l'expert).
 
 **[INFÉRÉ]** L'emboîtement en sim repose aussi sur la décomposition convexe de la pièce en 90 morceaux. Il peut différer de l'emboîtement réel.
 
