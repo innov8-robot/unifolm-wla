@@ -1,4 +1,4 @@
-"""Enregistre des démos expertes d'une tâche de sim (``--task cube|novares``) au format xr_teleoperate.
+"""Enregistre des démos expertes d'une tâche de sim (``--task cube|novares|stack...``) au format xr_teleoperate.
 
 Même format et même ordre qu'un enregistrement réel du G1-D, pour passer ensuite par le MÊME
 convertisseur (``g1d_wla.convert_teleop``) que les vraies démos :
@@ -28,7 +28,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from g1d_sim import G1DSim  # noqa: E402
-from sim_tasks import get_task  # noqa: E402
+from sim_tasks import TASKS, get_task  # noqa: E402
 from sim_episode_writer import SimEpisodeWriter  # noqa: E402
 
 
@@ -39,7 +39,8 @@ def record_episode(sim: G1DSim, rng: np.random.Generator, ep_dir: Path, jpeg_qua
 
     def on_step(t: int, closure_cmd: dict) -> None:
         w.record(t, closure_cmd)
-        if first["t"] is None and sim.object_pose(task.body)[2, 3] - z0 > task.lift_success:
+        done = task.success_now(sim) if task.success_now else sim.object_pose(task.body)[2, 3] - z0 > task.lift_success
+        if first["t"] is None and done:
             first["t"] = t                     # pas de réussite : utile au modèle de valeur (RECAP)
 
     res = task.expert(sim, rng, on_step=on_step)
@@ -53,7 +54,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--n", type=int, default=150, help="nombre d'épisodes RÉUSSIS à garder")
     ap.add_argument("--out", required=True, type=Path)
-    ap.add_argument("--task", choices=["cube", "novares"], default="cube")
+    ap.add_argument("--task", choices=sorted(TASKS), default="cube")
     ap.add_argument("--seed", type=int, default=1000)
     ap.add_argument("--head-view", dest="head_view", choices=["raw", "rec"], default="raw")
     ap.add_argument("--jpeg-quality", type=int, default=95)
@@ -79,7 +80,7 @@ def main() -> None:
         if res["success"] and res["ik_refused"] == 0:
             kept += 1
             summary.append(res)
-            print(f"garde {kept}/{a.n} (essai {tried}) soulevé {res['lifted']*100:.1f} cm "
+            print(f"garde {kept}/{a.n} (essai {tried}) réussite au pas {res['success_step']} "
                   f"| {time.time() - t0:.0f} s", flush=True)
         else:
             shutil.rmtree(ep_dir)

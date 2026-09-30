@@ -162,12 +162,17 @@ async def run(args) -> dict:
                 z0 = sim.object_pose(task.body)[2, 3]
                 ep["cube_base"] = np.round((np.linalg.inv(sim.base_pose_wla()) @ sim.object_pose(task.body))[:3, 3], 4).tolist()
             frames = [] if e < args.videos else None
-            done = (lambda: sim.object_pose(task.body)[2, 3] - z0 > task.lift_success) if cube else None
+            done = None
+            if cube:
+                done = (lambda: task.success_now(sim)) if task.success_now else \
+                    (lambda: sim.object_pose(task.body)[2, 3] - z0 > task.lift_success)
             ep["chunks"], ep["steps_to_success"] = await run_chunks(ws, packer, sim, args, frames, args.max_steps, done)
             if cube:
                 ep["lifted"] = round(float(sim.object_pose(task.body)[2, 3] - z0), 4)
                 # réussite = objet soulevé au-delà du seuil à un moment ET encore tenu à la fin
-                ep["success"] = bool(ep["steps_to_success"] is not None and ep["lifted"] > task.lift_success)
+                # (empilement : encore emboîtée, lâchée et support en place à la fin)
+                held = task.success_now(sim) if task.success_now else ep["lifted"] > task.lift_success
+                ep["success"] = bool(ep["steps_to_success"] is not None and held)
             if frames:
                 save_video(frames, out / f"episode_{e:03d}.mp4", 30 / args.video_every)
             log["episodes"].append(ep)

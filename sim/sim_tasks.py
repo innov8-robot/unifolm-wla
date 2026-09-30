@@ -7,6 +7,7 @@ seuil de levée pour la réussite.
 * ``novares`` : pièce Novares prise par sa zone PEINTE (mpc_any), pince verticale. Demande les
   fichiers non versionnés de la pièce (voir ``novares_task.py``).
 * ``novares_shift`` : idem, pièce dans une zone décalée jamais vue (test de généralisation / RECAP).
+* ``stack``   : empiler une pièce Novares sur une seconde, à plat, prise par le côté (``stack_task.py``).
 """
 from __future__ import annotations
 
@@ -29,6 +30,8 @@ class SimTask:
     place: Callable
     #: (sim, rng, on_step) -> dict résumé (success, lifted, ik_refused, ...)
     expert: Callable
+    #: (sim) -> bool : tâche accomplie à cet instant ; None = objet soulevé de ``lift_success``
+    success_now: Callable | None = None
 
 
 def _cube() -> SimTask:
@@ -69,7 +72,31 @@ def _novares(name: str = "novares") -> SimTask:
                    place=place, expert=lambda sim, rng, on_step=None: N.run_expert(sim, grasp, on_step=on_step))
 
 
-TASKS = {"cube": _cube, **{z: (lambda z=z: _novares(z)) for z in NOVARES_ZONES}}
+def _stack() -> SimTask:
+    import novares_task as N
+    import stack_task as ST
+    grasp = N.NovaresGrasp()
+    pose0 = {}
+
+    def place(sim: G1DSim, rng: np.random.Generator) -> None:
+        if "T" not in pose0:
+            pose0["T"] = sim.object_pose("piece").copy()
+        ST.place_pieces(sim, rng, pose0["T"])
+        pose0["sup"] = sim.object_pose("piece2")[:3, 3].copy()
+
+    def success_now(sim: G1DSim) -> bool:
+        """Emboîtée, lâchée (pince droite ouverte) et support resté en place."""
+        err, ang = ST.stack_error(sim)
+        moved = float(np.linalg.norm(sim.object_pose("piece2")[:3, 3] - pose0["sup"]))
+        return (err < ST.STACK_TOL and ang < ST.STACK_TOL_DEG and moved < ST.SUPPORT_MOVE_TOL
+                and sim.gripper("right") < 0.25)
+
+    return SimTask("stack", ST.SCENE_STACK_XML, ST.INSTRUCTION, "piece", N.LIFT_SUCCESS, place=place,
+                   expert=lambda sim, rng, on_step=None: ST.run_expert(sim, grasp, on_step=on_step),
+                   success_now=success_now)
+
+
+TASKS = {"cube": _cube, "stack": _stack, **{z: (lambda z=z: _novares(z)) for z in NOVARES_ZONES}}
 
 
 def get_task(name: str) -> SimTask:
