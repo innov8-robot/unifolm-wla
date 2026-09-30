@@ -658,7 +658,16 @@ Scène d'empilement corrigée (`scene_g1d_stack.xml`, pièces retournées de 180
 - **Démos** : 25 réussites gardées sur 422 essais de l'expert (seules les réussites sans aucun refus d'IK sont gardées, d'où 6 %).
 - **Fine-tuning** : 3000 pas depuis le modèle Base, `g1d_sim_stack_n25`.
 - **Résultat : 0 / 30.** Le modèle enchaîne bien le geste complet (approche par le côté, transport, dépose), mais sur 12 épisodes diagnostiqués : 9 fois la pièce n'est pas saisie et reste sur la table ; 3 fois elle est posée sur le support mais à 47–92 mm et 37–114° de la pose emboîtée.
-- **[INFÉRÉ]** La prise par le côté demande plus de précision que la prise par le dessus de la tâche de saisie, et 25 démos triées sur 6 % des essais couvrent mal la variance de placement.
+- **[VÉRIFIÉ] Ce n'est pas la tolérance de la prise** : pose de prise de l'expert décalée au hasard de r mm, saisie tenue (levée > 5 cm) sur 15 essais :
+
+  | Décalage | Par le dessus (sur le dos) | Par le côté (à plat) |
+  |---|---|---|
+  | 0 mm | 14 / 15 | 15 / 15 |
+  | 2 mm | 14 / 15 | 14 / 15 |
+  | 5 mm | 14 / 15 | 14 / 15 |
+  | 10 mm | 13 / 15 | 12 / 15 |
+
+- **[INFÉRÉ]** L'échec vient donc de l'apprentissage : 25 démos longues (300 pas, plusieurs phases) triées sur 6 % des essais, qui couvrent mal la variance de placement. Essai en cours : 100 démos, réussites avec refus d'IK acceptées (`--allow-ik-refused`).
 
 **[INFÉRÉ]** L'emboîtement en sim repose aussi sur la décomposition convexe de la pièce en 90 morceaux. Il peut différer de l'emboîtement réel.
 

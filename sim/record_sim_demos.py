@@ -59,6 +59,9 @@ def main() -> None:
     ap.add_argument("--head-view", dest="head_view", choices=["raw", "rec"], default="raw")
     ap.add_argument("--jpeg-quality", type=int, default=95)
     ap.add_argument("--overwrite", action="store_true")
+    ap.add_argument("--allow-ik-refused", dest="allow_ik_refused", action="store_true",
+                    help="garder aussi les réussites où l'IK a refusé des points (les angles COMMANDÉS "
+                         "enregistrés restent cohérents avec ce que le bras a fait)")
     a = ap.parse_args()
     if a.out.exists():
         if not a.overwrite:
@@ -77,7 +80,7 @@ def main() -> None:
         ep_dir = a.out / f"episode_{kept:04d}"
         res = record_episode(sim, rng, ep_dir, a.jpeg_quality, task)
         tried += 1
-        if res["success"] and res["ik_refused"] == 0:
+        if res["success"] and (res["ik_refused"] == 0 or a.allow_ik_refused):
             kept += 1
             summary.append(res)
             print(f"garde {kept}/{a.n} (essai {tried}) réussite au pas {res['success_step']} "
