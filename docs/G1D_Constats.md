@@ -667,7 +667,9 @@ Scène d'empilement corrigée (`scene_g1d_stack.xml`, pièces retournées de 180
   | 5 mm | 14 / 15 | 14 / 15 |
   | 10 mm | 13 / 15 | 12 / 15 |
 
-- **[INFÉRÉ]** L'échec vient donc de l'apprentissage : 25 démos longues (300 pas, plusieurs phases) triées sur 6 % des essais, qui couvrent mal la variance de placement. Essai en cours : 100 démos, réussites avec refus d'IK acceptées (`--allow-ik-refused`).
+- **[INFÉRÉ]** L'échec vient donc de l'apprentissage : 25 démos longues (300 pas, plusieurs phases) triées sur 6 % des essais, qui couvrent mal la variance de placement. Essai : 100 démos, réussites avec refus d'IK acceptées (`--allow-ik-refused`).
+- **[VÉRIFIÉ, sim] 100 démos : toujours 0 / 30** (100 réussites gardées sur 585 essais, 3000 pas). Le modèle approche la bonne pièce mais ferme la pince à côté ou la pousse (5 fois sur 30, elle tombe de la table), puis va au-dessus du support à vide. Real-time chunking (10 pas + préfixe 20, raccord 5) : 0 / 12 aussi. Perte d'entraînement comparable aux autres runs (fin à 0,0004), donc pas de sous-apprentissage visible dans la perte.
+- **[INCONNU]** Cause non trouvée. Prochain contrôle : prédiction en boucle ouverte sur des épisodes d'entraînement (le modèle reproduit-il les actions des démos à partir de leurs propres images ?). Si oui, le problème est l'écart en boucle fermée ; sinon, un défaut dans les données de cette tâche.
 
 **[INFÉRÉ]** L'emboîtement en sim repose aussi sur la décomposition convexe de la pièce en 90 morceaux. Il peut différer de l'emboîtement réel.
 
