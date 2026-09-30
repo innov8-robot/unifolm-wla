@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Empilement Novares en sim : 25 démos expertes (réussites seulement) -> fine-tuning -> évaluation.
-#   N=100 setsid nohup bash sim/experiments/queue_stack.sh > playground/queue_logs/stack_n100.log 2>&1 &
+#   N=100 [STEPS=12000 TAG=_12k] setsid nohup bash sim/experiments/queue_stack.sh > playground/queue_logs/stack_n100.log 2>&1 &
 # Attend la fin de l'enregistrement des démos (playground/sim_raw/stack_n25/summary.json), puis une
 # machine libre (mêmes garde-fous que queue_novares.sh : playground/.gpu_busy, GPU, RAM).
 set -uo pipefail
@@ -14,7 +14,9 @@ BUSY=$ROOT/playground/.gpu_busy
 CFG=unifolm_wla/dataloader/multi_source_dataset/configs
 N=${N:-25}
 RAW=playground/sim_raw/stack_n$N
-RUN=g1d_sim_stack_n$N
+STEPS=${STEPS:-3000}
+RUN=g1d_sim_stack_n$N${TAG:-}     # TAG : suffixe de run (ex. _12k), même dataset
+DATA=g1d_sim_stack_n$N
 say() { echo "[$(date '+%F %T')] $*"; }
 
 machine_free() {
@@ -47,33 +49,36 @@ say "démos prêtes : $(python3 -c "import json;d=json.load(open('$RAW/summary.j
 wait_free
 touch "$BUSY"
 
-[[ $N == 25 ]] || sed "s|g1d_sim_stack_n25/|$RUN/|; s|25 démos|$N démos|" $CFG/g1d_sim_stack_n25.yaml > $CFG/$RUN.yaml
+[[ $N == 25 ]] || sed "s|g1d_sim_stack_n25/|$DATA/|; s|25 démos|$N démos|" $CFG/g1d_sim_stack_n25.yaml > $CFG/$DATA.yaml
 say "conversion"
 "${VENV[@]}" .venv/bin/python -m g1d_wla.convert_teleop --raw-dir $RAW \
-    --out-dir playground/Datasets/$RUN/sim_stack --repo-id innov8/$RUN --overwrite \
-    > "$LOGS/stack_n${N}_convert.log" 2>&1 || { say "ÉCHEC conversion"; exit 1; }
+    --out-dir playground/Datasets/$DATA/sim_stack --repo-id innov8/$DATA --overwrite \
+    > "$LOGS/${RUN#g1d_sim_}_convert.log" 2>&1 || { say "ÉCHEC conversion"; exit 1; }
 
 free_gb=$(df -BG --output=avail "$ROOT" | tail -1 | tr -dc 0-9)
 (( free_gb >= 13 )) || { say "ARRÊT : ${free_gb} Go libres, il en faut 13"; exit 1; }
-say "entraînement $RUN"
+say "entraînement $RUN ($STEPS pas)"
 rm -rf "playground/Checkpoints/$RUN" playground/cache/arrow_cache
 run_id=$RUN bash examples/unifolm_wla/train_files/run_finetune_g1d.sh \
-    --datasets.vla_data.data_config_path $CFG/$RUN.yaml \
+    --datasets.vla_data.data_config_path $CFG/$DATA.yaml \
     --datasets.vla_data.per_device_batch_size 2 --datasets.vla_data.num_workers 4 \
-    --trainer.gradient_accumulation_steps 1 --trainer.max_train_steps 3000 --trainer.num_warmup_steps 100 \
+    --trainer.gradient_accumulation_steps 1 --trainer.max_train_steps $STEPS --trainer.num_warmup_steps 100 \
     --trainer.save_interval 1000000 --trainer.eval_interval 1000000 --trainer.logging_frequency 50 \
-    > "$LOGS/stack_n${N}_train.log" 2>&1 || { say "ÉCHEC entraînement"; exit 1; }
+    > "$LOGS/${RUN#g1d_sim_}_train.log" 2>&1 || { say "ÉCHEC entraînement"; exit 1; }
 
 say "évaluation (expert : ~270 pas jusqu'au lâcher)"
 "${VENV[@]}" .venv/bin/python -m model_server.action_server_wbc_msgpack_unitree \
     --ckpt_path playground/Checkpoints/$RUN/final_model/model.safetensors --unnorm_key UnifoLM_G1_Dex1 \
-    --port 8600 > "$LOGS/stack_n${N}_server.log" 2>&1 &
+    --port 8600 > "$LOGS/${RUN#g1d_sim_}_server.log" 2>&1 &
 SRV=$!
-until grep -q "server listening on" "$LOGS/stack_n${N}_server.log"; do
+until grep -q "server listening on" "$LOGS/${RUN#g1d_sim_}_server.log"; do
     kill -0 $SRV 2>/dev/null || { say "ÉCHEC serveur"; exit 1; }
     sleep 5
 done
 MUJOCO_GL=egl $SIMPY sim/wla_client.py --scene stack --instruction "stack the black part on the other one" \
     --head-view raw --episodes 30 --max-steps 450 --exec-steps 30 --stop-on-success --videos 4 --seed 7 \
-    --out sim/wla_out/stack_n$N 2>&1 | grep -E "réussite|Error|Traceback" | sed "s|^|    [stack n$N] |"
+    --out sim/wla_out/${RUN#g1d_sim_} 2>&1 | grep -E "réussite|Error|Traceback" | sed "s|^|    [$RUN] |"
+MUJOCO_GL=egl $SIMPY sim/open_loop_check.py --dataset playground/Datasets/$DATA/sim_stack --raw $RAW \
+    --episodes 0 1 2 --instruction "stack the black part on the other one" 2>&1 | grep -E "BILAN|Error" \
+    | sed "s|^|    [$RUN, boucle ouverte] |"
 say "file empilement terminée"
