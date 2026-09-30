@@ -173,6 +173,11 @@ async def run(args) -> dict:
                 # (empilement : encore emboîtée, lâchée et support en place à la fin)
                 held = task.success_now(sim) if task.success_now else ep["lifted"] > task.lift_success
                 ep["success"] = bool(ep["steps_to_success"] is not None and held)
+                if task.name == "stack":           # diagnostic : écart à la pose emboîtée à la fin
+                    import stack_task as ST
+                    err, ang = ST.stack_error(sim)
+                    ep["stack_err_mm"], ep["stack_err_deg"] = round(err * 1000, 1), round(ang, 1)
+                    ep["gripper_right"] = round(sim.gripper("right"), 2)
             if frames:
                 save_video(frames, out / f"episode_{e:03d}.mp4", 30 / args.video_every)
             log["episodes"].append(ep)
@@ -180,6 +185,8 @@ async def run(args) -> dict:
             if cube:
                 msg += (f" | cube {ep['cube_base']} | soulevé {ep['lifted']*100:.1f} cm -> {'RÉUSSI' if ep['success'] else 'raté'}"
                         f" | pas {ep['steps_to_success']}")
+                if "stack_err_mm" in ep:
+                    msg += f" | emboîtement {ep['stack_err_mm']} mm / {ep['stack_err_deg']}°, pince {ep['gripper_right']}"
             print(msg, flush=True)
     if cube:
         n_ok = sum(ep["success"] for ep in log["episodes"])
