@@ -669,7 +669,16 @@ Scène d'empilement corrigée (`scene_g1d_stack.xml`, pièces retournées de 180
 
 - **[INFÉRÉ]** L'échec vient donc de l'apprentissage : 25 démos longues (300 pas, plusieurs phases) triées sur 6 % des essais, qui couvrent mal la variance de placement. Essai : 100 démos, réussites avec refus d'IK acceptées (`--allow-ik-refused`).
 - **[VÉRIFIÉ, sim] 100 démos : toujours 0 / 30** (100 réussites gardées sur 585 essais, 3000 pas). Le modèle approche la bonne pièce mais ferme la pince à côté ou la pousse (5 fois sur 30, elle tombe de la table), puis va au-dessus du support à vide. Real-time chunking (10 pas + préfixe 20, raccord 5) : 0 / 12 aussi. Perte d'entraînement comparable aux autres runs (fin à 0,0004), donc pas de sous-apprentissage visible dans la perte.
-- **[INCONNU]** Cause non trouvée. Prochain contrôle : prédiction en boucle ouverte sur des épisodes d'entraînement (le modèle reproduit-il les actions des démos à partir de leurs propres images ?). Si oui, le problème est l'écart en boucle fermée ; sinon, un défaut dans les données de cette tâche.
+- **[VÉRIFIÉ] Boucle ouverte** (`sim/open_loop_check.py` : observation enregistrée envoyée au serveur, chunk prédit comparé aux 30 actions enregistrées ; 3 épisodes, une requête tous les 30 ou 15 pas) :
+
+  | Modèle | Épisodes | Écart au 30e pas, médian | « Tenir la pose » |
+  |---|---|---|---|
+  | Saisie Novares, 10 démos (27/30 en boucle fermée) | d'entraînement | **6,9 mm** | 70 mm |
+  | Empilement, 100 démos (0/30) | d'entraînement | **16,0 mm** | 69 mm |
+  | Empilement, 100 démos | non vus (jeu n25) | 18,5 mm | 76 mm |
+
+  Le modèle d'empilement reproduit mal ses propres démos : 2 fois moins précis que le modèle Novares, avec des pointes à 5–11 cm pendant le transfert articulaire et le transport, et un instant de fermeture ou d'ouverture de la pince souvent décalé. Presque aussi mauvais sur des démos non vues : ce n'est pas du sur-apprentissage.
+- **[INFÉRÉ] Cause probable : sous-apprentissage.** 3000 pas × lot de 2 = 6000 exemples vus, soit environ 4 passages sur les 1 500 images du jeu Novares n10, mais 0,2 passage sur les 30 800 images du jeu d'empilement n100 (0,8 pour n25). La perte d'entraînement, bruitée, ne le montrait pas.
 
 **[INFÉRÉ]** L'emboîtement en sim repose aussi sur la décomposition convexe de la pièce en 90 morceaux. Il peut différer de l'emboîtement réel.
 
