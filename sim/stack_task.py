@@ -6,6 +6,8 @@ pièce identique, dans le même sens.
   recherche géométrique (hauteur minimale sans interpénétration) puis vérifié par lâchers :
   ``_Novares_Piece1_centered.stack.json`` (non versionné, à côté de la pièce). En sim : 17 mm vers la
   gauche et 16 mm plus haut ; un lâcher avec ±3 mm d'erreur retombe à moins de 3 mm de cette pose.
+* Pose : pièces à plat, plaque sur la table et paroi courbe en haut (comme en réel) ; les zones
+  peintes tombent sur les flancs de la paroi. L'ancienne scène les posait sur le dos.
 * Variance : les deux pièces dans leur pose stable, positions et lacets tirés au hasard ; l'expert
   réaligne la pièce saisie sur le support pendant le transport (« même sens »).
 * Expert : prise peinte (``novares_task``), levée, transport au-dessus de la pose emboîtée, descente,
@@ -34,12 +36,13 @@ SUP_DX, SUP_DY, SUP_DYAW = (0.0, 0.04), (0.12, 0.15), (-0.35, 0.35)
 STACK_TOL = 0.008           # écart de position max à la pose emboîtée (m)
 STACK_TOL_DEG = 10.0
 SUPPORT_MOVE_TOL = 0.01
+FULL_ORIENTATION = True
 
 
 @dataclass
 class StackParams(N.NovaresParams):
     carry_up: float = 0.08      # hauteur de transport au-dessus de la pose emboîtée
-    place_clear: float = 0.02   # lâcher 2 cm au-dessus de la pose emboîtée : plus bas, les doigts
+    place_clear: float = 0.005   # lâcher 2 cm au-dessus de la pose emboîtée : plus bas, les doigts
                                 # qui tiennent les bouts de la paroi descendent dans la pièce du
                                 # dessous et la poussent (mesuré) ; l'emboîtement tolère un lâcher
                                 # de 1 à 3 cm avec ±3 mm d'erreur (mesuré)
@@ -50,8 +53,11 @@ class StackParams(N.NovaresParams):
 
 
 def nest_offset() -> np.ndarray:
+    """Pose emboîtée de la pièce du dessus dans le repère du support. Le fichier a été calculé avec
+    les pièces sur le dos (paroi courbe en bas) ; retournées, plaque à plat comme en réel, c'est le
+    support qui est « dessus » dans cette relation : on prend l'inverse (translation pure)."""
     T = np.eye(4)
-    T[:3, 3] = json.loads(NEST_FILE.read_text())["offset_in_support_frame_m"]
+    T[:3, 3] = -np.asarray(json.loads(NEST_FILE.read_text())["offset_in_support_frame_m"])
     return T
 
 
@@ -122,7 +128,36 @@ def _place_pose(sim: G1DSim, clear: float) -> np.ndarray:
     p_rel = Rz @ (P[:3, 3] - E[:3, 3])
     T[:3, 3] = target[:3, 3] - p_rel
     T[2, 3] += clear
+    if FULL_ORIENTATION:
+        # pièces à plat : elle pivote dans la pince autour de l'axe des mors (~20°) ; on corrige
+        # l'orientation complète si le poignet l'atteint, sinon on garde le lacet seul
+        Tf = target @ np.linalg.inv(P) @ E
+        Tf[2, 3] += clear
+        B, X = sim.base_pose_wla(), np.linalg.inv(sim._tcp_to_ee("right"))
+        if sim.solve_ik("right", B @ Tf @ X, q0=sim.arm_q("right"), follow=False)[1]:
+            return Tf
     return T
+
+
+def _pick_grasp(sim: G1DSim, cands: list, params: StackParams):
+    """Première prise (la plus verticale) dont le DÉPÔT est aussi atteignable : pièce supposée fixe
+    dans la pince, amenée sur sa pose emboîtée (et au-dessus) par un simple lacet."""
+    B, X = sim.base_pose_wla(), np.linalg.inv(sim._tcp_to_ee("right"))
+    Bi = np.linalg.inv(B)
+    P = Bi @ sim.object_pose("piece")
+    target = (Bi @ sim.object_pose("piece2")) @ nest_offset()
+    a = np.arctan2(target[1, 0], target[0, 0]) - np.arctan2(P[1, 0], P[0, 0])
+    Rz = np.eye(4)
+    Rz[:3, :3] = Rotation.from_euler("z", a).as_matrix()
+    for Tg in cands:
+        Tp = Rz @ Tg
+        Tp[:3, 3] = target[:3, 3] + Rz[:3, :3] @ (Tg[:3, 3] - P[:3, 3])
+        Tp[2, 3] += params.place_clear
+        Tab = Tp.copy()
+        Tab[2, 3] += params.carry_up
+        if all(sim.solve_ik("right", B @ M @ X, q0=sim.arm_q("right"), follow=False)[1] for M in (Tp, Tab)):
+            return Tg
+    return None
 
 
 def run_expert(sim: G1DSim, g: N.NovaresGrasp, params: StackParams = StackParams(), on_step=None) -> dict:
@@ -133,7 +168,9 @@ def run_expert(sim: G1DSim, g: N.NovaresGrasp, params: StackParams = StackParams
         return {"success": False, "lifted": 0.0, "steps": 0, "ik_refused": -1, "reason": "aucune prise atteignable"}
     B, X = sim.base_pose_wla(), np.linalg.inv(sim._tcp_to_ee("right"))
     sup0 = sim.object_pose("piece2")[:3, 3].copy()
-    Tg = cands[0]
+    Tg = _pick_grasp(sim, cands, params)
+    if Tg is None:
+        return {"success": False, "lifted": 0.0, "steps": 0, "ik_refused": -1, "reason": "aucune prise avec dépôt atteignable"}
     f = Tg[:3, 0]
     T0 = sim.ee_pose_wla("right")
     hold_left = sim.ee_pose_wla("left")

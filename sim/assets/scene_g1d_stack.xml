@@ -535,7 +535,7 @@
          repère base WLA, comme la table des datasets G1 Dex1 par rapport au bassin du G1 (estimé
          depuis la hauteur des prises, à ±3 cm). Carton et pièce remontés d'autant. -->
     <geom name="table" type="box" rgba="0.55 0.42 0.28 1" size="0.2 0.4 0.435" pos="0.5 -0.1 0.435" />
-    <body name="piece" pos="0.34 -0.08 0.8887" quat="0.5801 -0.8119 -0.0624 -0.0187">
+    <body name="piece" pos="0.34 -0.08 0.8919" quat="0.6177 0.7834 -0.0160 -0.0675">
       <freejoint name="piece_free" />
       <geom name="piece_visu" type="mesh" mesh="piece" rgba="0.07 0.07 0.08 1" contype="0" conaffinity="0" density="614.0" />
       <geom name="piece" type="mesh" mesh="Novares_Piece1_centered_part00" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
@@ -630,7 +630,7 @@
       <geom name="piece_c89" type="mesh" mesh="Novares_Piece1_centered_part89" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
     </body>
     <!-- Tâche d'empilement : seconde pièce identique, support (placée par sim/stack_task.py) -->
-    <body name="piece2" pos="0.34 0.04 0.8887" quat="0.5801 -0.8119 -0.0624 -0.0187">
+    <body name="piece2" pos="0.34 0.04 0.8919" quat="0.6177 0.7834 -0.0160 -0.0675">
       <freejoint name="piece2_free" />
       <geom name="piece2_visu" type="mesh" mesh="piece" rgba="0.07 0.07 0.08 1" contype="0" conaffinity="0" density="614.0" />
       <geom name="piece2" type="mesh" mesh="Novares_Piece1_centered_part00" density="0" rgba="0.07 0.07 0.08 0" condim="4" friction="1.5 0.05 0.0002" solref="-50000 -450" />
