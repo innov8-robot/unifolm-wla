@@ -634,9 +634,21 @@ La pièce Novares, avec sa prise verticale peinte et sa variance de ±3 cm et ±
 
 Le support est poussé de 7 à 13 mm en médiane.
 
-**[INCONNU] À trancher avec l'opérateur** :
-- quelle prise est utilisée en réel pour empiler, par exemple sur la plaque ou sur une autre zone ;
-- ou faut-il peindre une seconde zone de prise, compatible avec l'emboîtement.
+**[VÉRIFIÉ] Cause du blocage, précisée par l'opérateur (30 septembre)** : les pièces étaient posées **sur le dos**, paroi courbe en bas et plaque en l'air (pose reprise de la scène mpc_any). En réel, elles sont à plat, plaque sur la table, et se prennent **par le côté**, sur les flancs de la paroi.
+
+Scène d'empilement corrigée (`scene_g1d_stack.xml`, pièces retournées de 180°) :
+- **Emboîtement** : le décalage du fichier `.stack.json` s'inverse (le support devient le « dessus » de la relation calculée sur le dos). Pièce posée à 1 à 2 cm au-dessus, elle retombe emboîtée à 1,5 mm près, support immobile.
+- **Prise** : l'approche est maintenant horizontale, par le côté, comme en réel. L'expert choisit la première prise dont le dépôt est aussi atteignable par le bras droit.
+- **Dépôt** : pièce bien orientée au moment d'ouvrir (à 1° près). Lâchée à 2 cm, elle bascule d'environ 25° ; lâchée à 5 mm, elle s'emboîte.
+
+| Variante | Réussites de l'expert |
+|---|---|
+| Sur le dos (ancienne scène) | 3 / 20 |
+| À plat, lâcher à 5 mm | **18 / 60** (10/30 et 8/30 sur deux graines) |
+
+Échecs restants : dépôt hors de portée du bras droit (environ un quart), pièce qui glisse ou tombe de la pince pendant le transport, bascule de 20 à 25° au lâcher. Rapprocher le support n'a pas aidé (5/30 et 6/30).
+
+**[INFÉRÉ]** Un tiers de réussite suffit pour enregistrer des démos (on garde les réussites, comme pour Novares), mais une prise plus stable dans la pince aiderait l'apprentissage.
 
 **[INFÉRÉ]** L'emboîtement en sim repose aussi sur la décomposition convexe de la pièce en 90 morceaux. Il peut différer de l'emboîtement réel.
 

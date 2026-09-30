@@ -42,10 +42,10 @@ FULL_ORIENTATION = True
 @dataclass
 class StackParams(N.NovaresParams):
     carry_up: float = 0.08      # hauteur de transport au-dessus de la pose emboîtée
-    place_clear: float = 0.005   # lâcher 2 cm au-dessus de la pose emboîtée : plus bas, les doigts
-                                # qui tiennent les bouts de la paroi descendent dans la pièce du
-                                # dessous et la poussent (mesuré) ; l'emboîtement tolère un lâcher
-                                # de 1 à 3 cm avec ±3 mm d'erreur (mesuré)
+    place_clear: float = 0.005  # lâcher 5 mm au-dessus de la pose emboîtée : pièces à plat, les
+                                # doigts sur les flancs de la paroi restent hors de la pièce du
+                                # dessous ; lâchée de 2 cm, elle bascule d'environ 25° (mesuré).
+                                # Balayage sur 20 essais : 3 mm 5, 5 mm 8, 8 mm 7, 12 mm 3
     t_carry: int = 50
     t_place: int = 30
     t_open: int = 15
