@@ -179,7 +179,9 @@ for mode in ("error", "nan", "mute"):
         res5["c_" + mode] = True
         print(f"5c. serveur « {mode} » -> PolicyError : {str(e).splitlines()[0][:70]}")
 MODE["m"] = "hold"
-br.reset()                                             # reconnexion après le serveur muet
+res5["c_broken"] = br._broken                          # le délai dépassé a fermé la connexion
+br.reset()                                             # reconnexion FORCÉE (sinon décalage d'un message)
+res5["c_reconnect"] = not br._broken
 print("    reconnexion après le serveur muet : OK")
 
 # 5d. l'opérateur se penche (tête +10 cm) pendant la correction : le bras ne bouge pas
@@ -221,7 +223,7 @@ MODE["m"] = "hold"
 by = PB.PolicyBridge("ws://127.0.0.1:8612", "test", max_speed=0.15, torso_pitch=0.166, torso_yaw_index=12)
 body = np.zeros(35)
 body[12] = 0.25                                       # buste mesuré tourné de 0.25 rad
-o6 = by.step(imgs, q, grip, body, td)
+o6 = by.step(imgs, q, grip, body, fresh())
 meas6 = by.measured_ik(q, body)
 res6["a"] = abs(o6["torso_yaw"] - 0.25) < 1e-6
 res6["b"] = all(np.abs(o6[s] - meas6[s]).max() < 1e-6 for s in ("left", "right"))
@@ -230,13 +232,43 @@ print(f"6b. cibles IK = pose mesurée (buste tourné pris en compte) : "
       f"{max(np.abs(o6[s] - meas6[s]).max() for s in ('left', 'right')):.1e}")
 MODE["m"] = "yaw"
 by.reset()
-o7 = by.step(imgs, q, grip, body, td)
+o7 = by.step(imgs, q, grip, body, fresh())
 res6["c"] = abs(o7["torso_yaw"] - 0.3) < 1e-6
 print(f"6c. politique qui tourne le buste à 0.3 : rotation commandée {o7['torso_yaw']:.3f} rad")
 no_yaw = PB.PolicyBridge("ws://127.0.0.1:8612", "test", torso_pitch=0.166)
-res6["d"] = no_yaw.step(imgs, q, grip, body, td)["torso_yaw"] is None
+res6["d"] = no_yaw.step(imgs, q, grip, body, fresh())["torso_yaw"] is None
 print(f"6d. sans --torso-yaw-index : rotation non pilotée ({res6['d']})")
 by.close(); no_yaw.close()
+
+# 6e. bras bloqué : la politique vise 20 cm plus loin pendant 200 pas, la mesure ne bouge pas
+MODE["m"] = "ahead"
+bb = PB.PolicyBridge("ws://127.0.0.1:8612", "test", max_speed=0.15, torso_pitch=0.166)
+m_b = bb.measured_ik(q, None)["right"]
+for _ in range(200):
+    o8 = bb.step(imgs, q, grip, None, fresh())
+lead = float(np.linalg.norm(o8["right"][:3, 3] - m_b[:3, 3]))
+res6["e"] = lead <= PB.MAX_LEAD_POS + 1e-9
+print(f"6e. bras bloqué, politique 20 cm plus loin, 200 pas : cible à {lead*1000:.1f} mm de la mesure "
+      f"(borne {PB.MAX_LEAD_POS*1000:.0f})")
+bb.close()
+MODE["m"] = "hold"
+
+# 6f. ordre des rotations du buste contre l'URDF du G1-D (indépendant du code testé) : torse dans le
+# repère sous le tangage = Ry(tangage)·Rz(lacet)
+urdf = os.path.join(PB.REPO, "sim", "assets", "g1_d_dex1.urdf")
+mg = pin.buildModelFromUrdf(urdf)
+dg = mg.createData()
+worst6 = 0.0
+for p_, y_ in [(0.166, 0.0), (0.166, 0.4), (0.3, -0.6), (0.05, 1.0)]:
+    qg = pin.neutral(mg)
+    qg[mg.joints[mg.getJointId("Yaw_Joint")].idx_q] = p_
+    qg[mg.joints[mg.getJointId("torso_Joint")].idx_q] = y_
+    pin.framesForwardKinematics(mg, dg, qg)
+    R_par = dg.oMf[mg.getFrameId("Pitching_Link")].rotation
+    R_t = dg.oMf[mg.getFrameId("torso_link")].rotation
+    worst6 = max(worst6, np.abs(R_par.T @ R_t - PB.base_T_torso(p_, y_)[:3, :3]).max())
+res6["f"] = worst6 < 1e-9
+print(f"6f. Ry(tangage)·Rz(lacet) contre la FK de l'URDF G1-D : écart max {worst6:.1e}")
 ok4 = all(res6.values())
 print("RÉSULTAT 6 :", "OK" if ok4 else f"ÉCHEC {[k for k, v in res6.items() if not v]}")
 br.close()

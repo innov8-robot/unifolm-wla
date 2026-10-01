@@ -56,6 +56,10 @@ GRIP_ON, GRIP_OFF = 0.5, 0.3
 MAX_DELTA_POS, MAX_DELTA_ROT = 0.15, 0.6
 #: saut de la manette entre deux pas au-delà duquel on suppose une perte de suivi
 TRACKING_JUMP = 0.05
+#: écart max entre la cible et la pose MESURÉE (m, rad) : un bras bloqué (table, butée) ne voit
+#: pas sa cible continuer d'avancer, donc pas de force qui monte (audit du 1/10)
+MAX_LEAD_POS = 0.05
+MAX_LEAD_ROT = 0.3
 #: délai max d'une requête au serveur (s)
 RECV_TIMEOUT = 3.0
 
@@ -131,6 +135,7 @@ class PolicyBridge:
         self.control = {"left": control_left, "right": control_right}
         self.conv = FrameConverter()
         self.uri = uri
+        self._broken = False
         self.reset()
 
     # ------------------------------------------------------------------ cycle de vie
@@ -140,6 +145,8 @@ class PolicyBridge:
         self.pause()
         self.step_count = 0
         try:
+            if self._broken:                     # incident précédent : réponse tardive possible en attente
+                raise ConnectionError("connexion marquée rompue")
             self.ws.send(self.packer.pack({"type": "policy_reset"}))
             self.ws.recv(timeout=RECV_TIMEOUT)
         except Exception:
@@ -149,6 +156,7 @@ class PolicyBridge:
             self.meta = msgpack_numpy.unpackb(self.ws.recv(timeout=RECV_TIMEOUT))
             self.ws.send(self.packer.pack({"type": "policy_reset"}))
             self.ws.recv(timeout=RECV_TIMEOUT)
+        self._broken = False
 
     def pause(self) -> None:
         """La politique cesse de piloter (image absente, erreur, fin d'essai) : à la reprise, borne de
@@ -198,6 +206,10 @@ class PolicyBridge:
             self.ws.send(self.packer.pack({"type": "get_action", "obs": obs}))
             raw = self.ws.recv(timeout=RECV_TIMEOUT)
         except Exception as e:
+            # la réponse peut arriver plus tard et décaler tous les échanges suivants d'un message :
+            # connexion fermée, reconnexion forcée au prochain reset (audit du 1/10)
+            self._broken = True
+            self.close()
             raise PolicyError(f"serveur WLA sans réponse ({type(e).__name__}: {e})") from e
         if isinstance(raw, str):
             raise PolicyError(f"erreur du serveur WLA :\n{raw}")
@@ -293,14 +305,26 @@ class PolicyBridge:
                 out["intervention"] = True
             else:
                 self.corr[s] = None
-            out[s] = self._limit(s, T)
+            out[s] = self._limit(s, T, meas[s])
             out["trigger"][s] = dex1_to_trigger(g)
         self.k += 1
         self.step_count += 1
         return out
 
-    def _limit(self, side: str, T: np.ndarray) -> np.ndarray:
-        """Borne la vitesse de la cible (translation et rotation par pas)."""
+    def _limit(self, side: str, T: np.ndarray, meas: np.ndarray | None = None) -> np.ndarray:
+        """Borne la vitesse de la cible (translation et rotation par pas), puis son écart à la pose
+        mesurée ``meas`` (MAX_LEAD_POS / MAX_LEAD_ROT)."""
+        if meas is not None:
+            d = T[:3, 3] - meas[:3, 3]
+            n = float(np.linalg.norm(d))
+            if n > MAX_LEAD_POS:
+                T = T.copy()
+                T[:3, 3] = meas[:3, 3] + d * (MAX_LEAD_POS / n)
+            ang = float(np.linalg.norm(Rotation.from_matrix(meas[:3, :3].T @ T[:3, :3]).as_rotvec()))
+            if ang > MAX_LEAD_ROT:
+                T = T.copy()
+                sl = Slerp([0.0, 1.0], Rotation.from_matrix(np.stack([meas[:3, :3], T[:3, :3]])))
+                T[:3, :3] = sl(MAX_LEAD_ROT / ang).as_matrix()
         prev = self.last_target[side]
         if prev is not None:
             d = T[:3, 3] - prev[:3, 3]

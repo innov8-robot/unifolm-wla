@@ -205,18 +205,9 @@ if __name__ == '__main__':
                                      webrtc_url=f"https://{args.img_server_ip}:{camera_config['head_camera']['webrtc_port']}/offer",
                                      )
         
-        # motion mode (G1: Regular mode R1+X, not Running mode R2+A)
-        if args.motion:
-            if args.input_mode == "controller":
-                loco_wrapper = LocoClientWrapper()
-        else:
-            motion_switcher = MotionSwitcher()
-            status, result = motion_switcher.Enter_Debug_Mode()
-            logger_mp.info(f"Enter debug mode: {'Success' if status == 0 else 'Failed'}")
-
         # arm
-        # mode politique (G1-D, RECAP) : connexion au serveur WLA AVANT l'init des bras, pour qu'un
-        # serveur injoignable arrête le programme sans jamais bouger les bras (audit du 29/09)
+        # mode politique (G1-D, RECAP) : connexion au serveur WLA AVANT le mode debug et l'init des bras :
+        # un serveur injoignable arrête le programme sans jamais toucher au robot (audits du 29/09 et du 1/10)
         bridge = None
         if args.policy_uri:
             if not camera_config['head_camera']['enable_zmq']:
@@ -230,13 +221,26 @@ if __name__ == '__main__':
             logger_mp.info(f"🤖  Mode POLITIQUE : {args.policy_uri} | grip = corriger, gâchette = pince, "
                            f"X gauche = réussi, Y gauche = raté | vitesse max {args.policy_max_speed} m/s")
 
+        # motion mode (G1: Regular mode R1+X, not Running mode R2+A)
+        if args.motion:
+            if args.input_mode == "controller":
+                loco_wrapper = LocoClientWrapper()
+        else:
+            motion_switcher = MotionSwitcher()
+            status, result = motion_switcher.Enter_Debug_Mode()
+            logger_mp.info(f"Enter debug mode: {'Success' if status == 0 else 'Failed'}")
+
         if args.arm == "G1_29":
             arm_ik = G1_29_ArmIK()
             arm_ctrl = G1_29_ArmController(motion_mode=args.motion, simulation_mode=args.sim)
             if args.torso_yaw_index is not None:
                 logger_mp.warning(f"rotation du buste sur le moteur {args.torso_yaw_index} : HYPOTHÈSE, vérifier "
                                   f"l'indice sur le robot avant tout essai (bras dégagés)")
-                arm_ctrl.enable_torso_yaw(args.torso_yaw_index, args.torso_yaw_max, args.torso_yaw_rate)
+                # mode politique : la rotation du buste emporte les bras hors de la borne --policy-max-speed ;
+                # vitesse du buste bornée pour qu'une main à 0,5 m de l'axe reste sous cette vitesse
+                yaw_rate = min(args.torso_yaw_rate, args.policy_max_speed / 0.5) if bridge is not None else args.torso_yaw_rate
+                arm_ctrl.enable_torso_yaw(args.torso_yaw_index, args.torso_yaw_max, yaw_rate,
+                                          forbidden=(args.torso_pitch_index,) if args.torso_pitch is None else ())
         elif args.arm == "G1_23":
             arm_ik = G1_23_ArmIK()
             arm_ctrl = G1_23_ArmController(motion_mode=args.motion, simulation_mode=args.sim)
@@ -325,6 +329,7 @@ if __name__ == '__main__':
         policy_paused = False          # pas où la politique ne pilote pas : pas enregistrés
         hold_ik = None                 # cibles figées quand la politique ne pilote pas
         torso_yaw_offset = 0.0         # mode politique : correction de rotation du buste par l'opérateur
+        last_noimg_log = 0.0
         episode_steps = 0
         head_img = left_wrist_img = right_wrist_img = None      # caméra désactivée : reste None
         prev_lX = prev_lY = False
@@ -344,7 +349,8 @@ if __name__ == '__main__':
                                      image_size = [_rec_w, _rec_h],
                                      rerun_log = not args.headless)
             # indices du buste dans body.qpos, lus par le convertisseur (g1d_wla.convert_teleop)
-            recorder.info["body_layout"] = {"torso_pitch": args.torso_pitch_index, "torso_yaw": args.torso_yaw_index}
+            recorder.info["body_layout"] = {"torso_pitch": args.torso_pitch_index, "torso_yaw": args.torso_yaw_index,
+                                            "torso_pitch_const": args.torso_pitch}
 
         logger_mp.info("----------------------------------------------------------------")
         logger_mp.info("🟢  Press [r] to start syncing the robot with your movements.")
@@ -484,6 +490,11 @@ if __name__ == '__main__':
             if args.right_only and frozen_left_arm_q is None:
                 frozen_left_arm_q = current_lr_arm_q[:7].copy()
                 logger_mp.info(f"[right-only] left arm frozen at startup pose: {frozen_left_arm_q}")
+                if args.ee == "dex1":
+                    # pince gauche figée à son ouverture mesurée : sans consigne, la valeur 0 la fermait
+                    # (« gâchette » 5 = fermée, 7 = ouverte, unité Dex1 0 -> 5.4 ; audit du 1/10)
+                    with left_gripper_value.get_lock():
+                        left_gripper_value.value = 5.0 + 2.0 * float(np.clip(dual_gripper_state_array[0] / 5.4, 0.0, 1.0))
 
             # solve ik using motor data and wrist pose, then use ik results to control arms.
             time_ik_start = time.time()
@@ -513,6 +524,9 @@ if __name__ == '__main__':
                                         f"B pour l'annuler")
                 elif policy_active and not imgs_ok:
                     bridge.pause()                            # image absente : on tient, la reprise repart de la mesure
+                    if time.time() - last_noimg_log > 2.0:
+                        last_noimg_log = time.time()
+                        logger_mp.warning("🤖  image(s) absente(s) (tête / poignets) : politique en tenue")
                 if res is not None:
                     hold_ik = None
                     policy_paused = False
@@ -544,15 +558,18 @@ if __name__ == '__main__':
             if args.torso_yaw_index is not None and START:
                 stick = float(tele_data.right_ctrl_thumbstickValue[0])
                 d_yaw = 0.0 if abs(stick) < TORSO_STICK_DEADZONE else -stick * args.torso_yaw_rate / args.frequency
-                if bridge is not None and res is not None and res.get("torso_yaw") is not None:
-                    # mode politique : rotation prédite + correction de l'opérateur (comptée comme intervention)
+                if bridge is None:
+                    arm_ctrl.set_torso_yaw(arm_ctrl.get_torso_yaw_target() + d_yaw)
+                elif res is not None and res.get("torso_yaw") is not None:
+                    # mode politique : rotation prédite + correction de l'opérateur, comptée comme intervention
+                    # TANT QU'ELLE EST NON NULLE (pas seulement quand le joystick bouge)
                     torso_yaw_offset = float(np.clip(torso_yaw_offset + d_yaw, -args.torso_yaw_max, args.torso_yaw_max))
                     arm_ctrl.set_torso_yaw(res["torso_yaw"] + torso_yaw_offset)
-                    if d_yaw != 0.0:
+                    if abs(torso_yaw_offset) > 1e-3:
                         policy_intervention = True
-                elif bridge is None or not policy_paused:
-                    arm_ctrl.set_torso_yaw(arm_ctrl.get_torso_yaw_target() + d_yaw)
-                # politique en tenue : buste figé comme les bras
+                else:
+                    # politique en tenue, ou rotation non prédite : buste FIGÉ à sa consigne courante
+                    arm_ctrl.hold_torso_yaw()
             sol_q, sol_tauff  = arm_ik.solve_ik(left_target, right_target, current_lr_arm_q, current_lr_arm_dq)
             time_ik_end = time.time()
             logger_mp.debug(f"ik:\t{round(time_ik_end - time_ik_start, 6)}")
@@ -619,6 +636,7 @@ if __name__ == '__main__':
                 if RECORD_RUNNING:
                     colors = {}
                     depths = {}
+                    frame_ok = True            # une caméra active sans image : pas NON enregistré (audit du 1/10)
                     # Sequential color indexing: each ENABLED camera reserves the next
                     # color_N slot (a None frame leaves its reserved slot empty but does
                     # not shift the others). With every camera enabled this yields the
@@ -626,29 +644,33 @@ if __name__ == '__main__':
                     # is disabled (e.g. --right-only) the remaining keys stay contiguous.
                     ci = 0
                     if camera_config['head_camera']['binocular']:
-                        if head_img is not None:
+                        if head_img is not None and head_img.bgr is not None:
                             half = camera_config['head_camera']['image_shape'][1] // 2
                             colors[f"color_{ci}"]     = head_img.bgr[:, :half]
                             colors[f"color_{ci + 1}"] = head_img.bgr[:, half:]
                         else:
+                            frame_ok = False
                             logger_mp.warning("Head image is None!")
                         ci += 2
                     else:
-                        if head_img is not None:
+                        if head_img is not None and head_img.bgr is not None:
                             colors[f"color_{ci}"] = head_img.bgr
                         else:
+                            frame_ok = False
                             logger_mp.warning("Head image is None!")
                         ci += 1
                     if camera_config['left_wrist_camera']['enable_zmq']:
-                        if left_wrist_img is not None:
+                        if left_wrist_img is not None and left_wrist_img.bgr is not None:
                             colors[f"color_{ci}"] = left_wrist_img.bgr
                         else:
+                            frame_ok = False
                             logger_mp.warning("Left wrist image is None!")
                         ci += 1
                     if camera_config['right_wrist_camera']['enable_zmq']:
-                        if right_wrist_img is not None:
+                        if right_wrist_img is not None and right_wrist_img.bgr is not None:
                             colors[f"color_{ci}"] = right_wrist_img.bgr
                         else:
+                            frame_ok = False
                             logger_mp.warning("Right wrist image is None!")
                         ci += 1
                     states = {
@@ -701,15 +723,15 @@ if __name__ == '__main__':
                             "qpos": current_body_action,
                         }, 
                     }
-                    if args.sim:
-                        sim_state = sim_state_subscriber.read_data()            
-                        recorder.add_item(colors=colors, depths=depths, states=states, actions=actions, sim_state=sim_state)
+                    extra_kw = {"sim_state": sim_state_subscriber.read_data()} if args.sim else {}
+                    if not frame_ok:
+                        pass                           # image manquante : pas sauté (le convertisseur l'exige)
                     elif bridge is None:
-                        recorder.add_item(colors=colors, depths=depths, states=states, actions=actions)
+                        recorder.add_item(colors=colors, depths=depths, states=states, actions=actions, **extra_kw)
                         episode_steps += 1
                     elif not policy_paused:        # mode politique : pas de pas « tenus » dans les données
                         recorder.add_item(colors=colors, depths=depths, states=states, actions=actions,
-                                          extra={"intervention": int(policy_intervention)})
+                                          extra={"intervention": int(policy_intervention)}, **extra_kw)
                         episode_steps += 1
 
             current_time = time.time()
@@ -728,7 +750,9 @@ if __name__ == '__main__':
             if getattr(arm_ctrl, "torso_yaw_index", None) is not None:
                 arm_ctrl.set_torso_yaw(0.0)            # buste ramené droit, vitesse bornée
                 time.sleep(args.torso_yaw_max / args.torso_yaw_rate + 0.5)
-            arm_ctrl.ctrl_dual_arm_go_home()
+            arm_ctrl.ctrl_dual_arm_go_home(slow=True)  # retour au repos à vitesse réduite (audit du 1/10)
+        except NameError:
+            pass                                       # arrêt avant l'init des bras : rien à ramener
         except Exception as e:
             logger_mp.error(f"Failed to ctrl_dual_arm_go_home: {e}")
         

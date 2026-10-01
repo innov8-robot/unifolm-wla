@@ -86,6 +86,7 @@ class G1_29_ArmController:
         self._torso_yaw_cmd = 0.0
         self._torso_yaw_max = 0.6
         self._torso_yaw_rate = 0.5
+        self.TORSO_YAW_LEAD = 0.15     # écart max consigne / mesure (rad) : un buste bloqué ne force pas
 
         if self.motion_mode:
             self.lowcmd_publisher = ChannelPublisher(kTopicLowCommand_Motion, hg_LowCmd)
@@ -189,6 +190,9 @@ class G1_29_ArmController:
                     target = self._torso_yaw_target
                 step = self._torso_yaw_rate * self.control_dt
                 self._torso_yaw_cmd += float(np.clip(target - self._torso_yaw_cmd, -step, step))
+                meas = self.lowstate_buffer.GetData().motor_state[self.torso_yaw_index].q
+                self._torso_yaw_cmd = float(np.clip(self._torso_yaw_cmd, meas - self.TORSO_YAW_LEAD,
+                                                    meas + self.TORSO_YAW_LEAD))
                 self.msg.motor_cmd[self.torso_yaw_index].q = self._torso_yaw_cmd
                 self.msg.motor_cmd[self.torso_yaw_index].dq = 0
                 self.msg.motor_cmd[self.torso_yaw_index].tau = 0
@@ -207,13 +211,20 @@ class G1_29_ArmController:
             # logger_mp.debug(f"arm_velocity_limit:{self.arm_velocity_limit}")
             # logger_mp.debug(f"sleep_time:{sleep_time}")
 
-    def enable_torso_yaw(self, index: int, max_abs: float = 0.6, rate: float = 0.5):
+    def enable_torso_yaw(self, index: int, max_abs: float = 0.6, rate: float = 0.5, forbidden=()):
         """Pilote la rotation du buste (G1-D) sur le moteur ``index`` des 35 : consigne de départ =
-        angle MESURÉ (aucun saut), bornée à ±``max_abs`` rad, vitesse ≤ ``rate`` rad/s."""
+        angle MESURÉ (aucun saut), bornée à ±``max_abs`` rad, vitesse ≤ ``rate`` rad/s.
+        Refuse un indice de bras, ``forbidden`` (ex. tangage), hors bornes, ou un buste déjà hors de ±max."""
+        arm = set(m.value for m in G1_29_JointArmIndex)
+        if not (0 <= int(index) < G1_29_Num_Motors) or int(index) in arm or int(index) in set(forbidden):
+            raise ValueError(f"indice de rotation du buste {index} refusé (bras, tangage ou hors [0, {G1_29_Num_Motors}))")
         q0 = float(self.get_current_motor_q()[index])
+        if abs(q0) > max_abs:
+            raise ValueError(f"moteur {index} mesuré à {q0:.3f} rad, hors de ±{max_abs} : mauvais indice ou buste "
+                             f"déjà tourné — rien n'est commandé")
         with self.ctrl_lock:
             self._torso_yaw_max, self._torso_yaw_rate = float(max_abs), float(rate)
-            self._torso_yaw_target = self._torso_yaw_cmd = float(np.clip(q0, -max_abs, max_abs))
+            self._torso_yaw_target = self._torso_yaw_cmd = q0
             self.torso_yaw_index = int(index)
         logger_mp.info(f"[G1_29_ArmController] rotation du buste pilotée : moteur {index}, départ {q0:.3f} rad, "
                        f"±{max_abs} rad, {rate} rad/s")
@@ -224,6 +235,13 @@ class G1_29_ArmController:
             return
         with self.ctrl_lock:
             self._torso_yaw_target = float(np.clip(yaw, -self._torso_yaw_max, self._torso_yaw_max))
+
+    def hold_torso_yaw(self):
+        """Fige le buste à sa consigne courante (tenue)."""
+        if self.torso_yaw_index is None:
+            return
+        with self.ctrl_lock:
+            self._torso_yaw_target = self._torso_yaw_cmd
 
     def get_torso_yaw_target(self) -> float:
         with self.ctrl_lock:
@@ -251,10 +269,15 @@ class G1_29_ArmController:
         '''Return current state dq of the left and right arm motors.'''
         return np.array([self.lowstate_buffer.GetData().motor_state[id].dq for id in G1_29_JointArmIndex])
     
-    def ctrl_dual_arm_go_home(self):
-        '''Move both the left and right arms of the robot to their home position by setting the target joint angles (q) and torques (tau) to zero.'''
+    def ctrl_dual_arm_go_home(self, slow: bool = False):
+        '''Move both the left and right arms of the robot to their home position by setting the target joint angles (q) and torques (tau) to zero.
+        ``slow`` (G1-D, audit du 1/10) : vitesse articulaire bornée à 0.5 rad/s au lieu de 20-30 rad/s.'''
         logger_mp.info("[G1_29_ArmController] ctrl_dual_arm_go_home start...")
         max_attempts = 100
+        if slow:
+            self._speed_gradual_max = False
+            self.arm_velocity_limit = 0.5
+            max_attempts = int(np.max(np.abs(self.get_current_dual_arm_q())) / 0.5 / 0.05) + 40
         current_attempts = 0
         with self.ctrl_lock:
             self.q_target = np.zeros(14)
