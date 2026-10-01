@@ -71,6 +71,7 @@ def compose_xr_image(head_bgr, left_wrist_bgr=None, right_wrist_bgr=None, binocu
 TORSO_STICK_DEADZONE = 0.2  # joystick droit : zone morte de la rotation du buste
 CAL_POSE_Q = np.zeros(14)    # posture de calibration (Y) : position zéro du G1 = coudes ~80°, avant-bras vers l'avant
 BASE_STICK_DEADZONE = 0.15  # joystick gauche : zone morte de la base
+COLUMN_STICK_DEADZONE = 0.2  # joystick droit haut/bas : zone morte de la colonne
 BASE_STALE_S = 0.3          # manette gauche figée depuis plus longtemps : base arrêtée
 CAL_MOVE_S = 2.5             # durée du trajet vers la posture de calibration (s)
 START          = False  # Enable to start robot following VR user motion
@@ -160,6 +161,11 @@ if __name__ == '__main__':
                         help="G1-D : joystick GAUCHE = base roulante (haut/bas = avancer/reculer, gauche/droite = tourner)")
     parser.add_argument('--base-max-vx', type=float, default=0.3, help='vitesse linéaire max de la base (m/s, ≤ 1.0)')
     parser.add_argument('--base-max-vyaw', type=float, default=0.4, help='vitesse de rotation max de la base (rad/s, ≤ 0.6)')
+    parser.add_argument('--column', action='store_true',
+                        help="G1-D : joystick DROIT haut/bas = colonne (monter/descendre le buste) ; "
+                             "au lancement, la colonne descend en butée basse (référence)")
+    parser.add_argument('--column-vel', type=float, default=0.3, help='vitesse max de la colonne (unité de la commande, ≤ 0.3)')
+    parser.add_argument('--column-max', type=float, default=0.40, help='hauteur max au-dessus de la butée basse (m)')
     parser.add_argument('--timing', action='store_true',
                         help="journal toutes les 2 s : fréquence de boucle, temps d'IK, retard des bras sur la consigne")
     parser.add_argument('--dex1-bus', choices=['internal', 'usb'], default='internal',
@@ -177,6 +183,8 @@ if __name__ == '__main__':
         parser.error("--policy-uri demande --arm G1_29 --ee dex1 --input-mode controller, sans --motion")
     if args.ee == "dex1" and args.dex1_bus == "internal" and not args.sim and args.arm != "G1_29":
         parser.error("--dex1-bus internal demande --arm G1_29 (commande dans le LowCmd des bras)")
+    if args.column and (args.motion or args.policy_uri or args.input_mode != "controller"):
+        parser.error("--column demande --input-mode controller, sans --motion ni --policy-uri")
     if args.base and (args.motion or args.policy_uri or args.input_mode != "controller"):
         parser.error("--base demande --input-mode controller, sans --motion ni --policy-uri")
     if args.policy_uri and abs(args.frequency - 30.0) > 1e-6:
@@ -290,6 +298,14 @@ if __name__ == '__main__':
             arm_ik = H1_ArmIK()
             arm_ctrl = H1_ArmController(simulation_mode=args.sim)
 
+        column = None
+        if args.column:
+            from teleop.robot_control.g1d_column import ColumnController
+            column = ColumnController(args.column_vel, args.column_max)
+            logger_mp.warning("colonne : descente en butée basse — vérifier que les bras ne touchent rien en descendant")
+            if not column.home():
+                column.stop()
+                column = None
         base = None
         if args.base:
             from teleop.robot_control.g1d_base import G1DBase
@@ -384,6 +400,7 @@ if __name__ == '__main__':
                "offset": {"left": np.zeros(3), "right": np.zeros(3)}}
         prev_cY = False
         base_last = {"pose": None, "t": 0.0}
+        column_last = {"pose": None, "t": 0.0}
         loop_count = -1
         timing_acc = {"n": 0, "ik": 0.0, "lag": 0.0, "dpos": 0.0, "prev_t": None, "t0": time.time()}
         episode_steps = 0
@@ -652,10 +669,25 @@ if __name__ == '__main__':
                 else:
                     base_cmd = base.set(0.0, 0.0)
 
+            # colonne (G1-D) : joystick DROIT haut/bas (axe dominant), coupée si la manette droite est figée
+            column_v = 0.0
+            if column is not None:
+                pose_r = np.asarray(tele_data.right_wrist_pose)
+                if column_last["pose"] is None or not np.array_equal(pose_r, column_last["pose"]):
+                    column_last.update(pose=pose_r.copy(), t=time.time())
+                rx, ry = (float(v) for v in tele_data.right_ctrl_thumbstickValue[:2])
+                vert = ry if (abs(ry) > abs(rx) and abs(ry) >= COLUMN_STICK_DEADZONE) else 0.0
+                if START and time.time() - column_last["t"] < BASE_STALE_S and not cal["paused"]:
+                    column_v = column.set_velocity(-vert * args.column_vel)    # joystick vers le haut = monter
+                else:
+                    column_v = column.set_velocity(0.0)
+
             # rotation du buste (G1-D) : joystick droit gauche/droite. Les cibles IK sont dans un repère lié
             # au torse : tourner le buste emporte les bras (comme quand l'opérateur pivote sur lui-même).
             if args.torso_yaw_index is not None and START:
                 stick = float(tele_data.right_ctrl_thumbstickValue[0])
+                if column is not None and abs(float(tele_data.right_ctrl_thumbstickValue[1])) > abs(stick):
+                    stick = 0.0                        # joystick droit poussé surtout en haut/bas : colonne
                 d_yaw = 0.0 if abs(stick) < TORSO_STICK_DEADZONE else -stick * args.torso_yaw_rate / args.frequency
                 if bridge is None:
                     arm_ctrl.set_torso_yaw(arm_ctrl.get_torso_yaw_target() + d_yaw)
@@ -823,6 +855,8 @@ if __name__ == '__main__':
                             "qpos": current_body_state,
                         }, 
                     }
+                    if column is not None:     # G1-D : hauteur de colonne au-dessus de la butée basse (m)
+                        states["column"] = {"qpos": [float(column.height() or 0.0)]}
                     actions = {
                         "left_arm": {                                   
                             "qpos":   left_arm_action.tolist(),       
@@ -848,6 +882,8 @@ if __name__ == '__main__':
                             "qpos": current_body_action,
                         }, 
                     }
+                    if column is not None:     # consigne de VITESSE de la colonne (unité de la commande)
+                        actions["column"] = {"qpos": [float(column_v)]}
                     extra_kw = {"sim_state": sim_state_subscriber.read_data()} if args.sim else {}
                     if not frame_ok:
                         pass                           # image manquante : pas sauté (le convertisseur l'exige)
@@ -873,6 +909,13 @@ if __name__ == '__main__':
         import traceback
         logger_mp.error(traceback.format_exc())
     finally:
+        try:
+            if column is not None:
+                column.stop()
+        except NameError:
+            pass
+        except Exception as e:
+            logger_mp.error(f"arrêt de la colonne : {e}")
         try:
             if base is not None:
                 base.stop()                            # vitesses nulles : la base roule ~1,5 s sinon

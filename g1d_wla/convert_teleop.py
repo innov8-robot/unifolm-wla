@@ -145,7 +145,15 @@ def convert_episode(ep: dict, fk: dict, torso_pitch_index: int | None, torso_pit
     out["action.waist_action_joint"] = waist
     out["observation.state.state_torso"] = matrix_to_xyz_rpy(B_torso)
     vel = np.array([(st["actions"]["body"]["qpos"] or [0.0, 0.0, 0.0])[:3] for st in steps], float)
-    out["action.base_command"] = np.concatenate([vel, np.full((T, 1), base_height)], axis=1)
+    # hauteur : G1-D avec colonne enregistrée (téléop --column) -> hauteur de bassin G1 équivalente =
+    # base_height + hauteur au-dessus de la butée basse. HYPOTHÈSE : colonne en butée basse ≈ G1 debout
+    # (le G1 ne fait que s'accroupir : au-delà de ~+6 cm, hors des données d'entraînement, q99 = 0,794)
+    if all("column" in st["states"] for st in steps):
+        col = np.array([st["states"]["column"]["qpos"][0] for st in steps], float)
+        height = base_height + col
+    else:
+        height = np.full(T, base_height)
+    out["action.base_command"] = np.concatenate([vel, height[:, None]], axis=1)
     return {k: v.astype(np.float32) for k, v in out.items()}
 
 
