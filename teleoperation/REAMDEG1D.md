@@ -212,3 +212,17 @@ Mesuré hors robot (moteurs supposés parfaits) : délai pour suivre 90 % d'un d
 - La partie logicielle se réduit d'environ 100 ms avec `--frequency 60 --ik-smooth light`. L'enregistrement reste à 30 Hz (`--record-fps 30`, un pas sur deux gardé). Le mode politique impose 30 Hz.
 - Le reste vient des moteurs (gains amont kp 80 aux épaules et coudes), du Wi-Fi casque → PC et du casque lui-même. `--timing` affiche toutes les 2 s la fréquence de boucle, le temps d'IK, l'écart consigne-mesure des bras et les sauts de cible (des sauts réguliers = poses de manette qui arrivent par paquets = Wi-Fi).
 - Wi-Fi : pendant une session, `ss -tn sport = :8012` donne l'IP du casque, puis `ping <ip>`. Viser un Wi-Fi 5 GHz dédié.
+
+## Commandes de la manette (téléop, sans `--motion`)
+
+| Commande | Effet |
+|---|---|
+| `r` (clavier) | Démarrer la téléop |
+| **A** droit / `s` | Démarrer puis arrêter + sauvegarder un enregistrement |
+| **B** droit | Annuler l'enregistrement en cours |
+| **Y** gauche | **Pause + recalage** : le suivi s'arrête, les bras vont doucement (2,5 s) en posture de calibration — position zéro du G1, bras le long du corps, avant-bras vers l'avant, coudes ~80°. Prenez la même posture, puis **Y** à nouveau : la pose actuelle des manettes devient celle des mains du robot (recalage en position, pas de saut). Pinces figées et pas non enregistrés pendant la pause. Hors mode politique (Y = essai raté) |
+| Gâchettes | Pinces |
+| Joystick droit ←/→ | Rotation du buste (`--torso-yaw-index 12`) |
+| `q` (clavier) | Quitter (buste ramené droit, bras rentrés lentement) |
+
+Le recalage porte sur la position des mains ; l'orientation reste celle des manettes : tenir les manettes « avant-bras vers l'avant » à la reprise.

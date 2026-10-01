@@ -5,6 +5,7 @@ import threading
 import cv2
 import logging_mp
 import numpy as np
+import pinocchio as pin
 logging_mp.basicConfig(level=logging_mp.INFO)
 logger_mp = logging_mp.getLogger(__name__)
 
@@ -67,7 +68,9 @@ def compose_xr_image(head_bgr, left_wrist_bgr=None, right_wrist_bgr=None, binocu
     return out
 
 # state transition
-TORSO_STICK_DEADZONE = 0.2  # joystick droit : zone morte de la rotation du buste
+TORSO_STICK_DEADZONE = 0.2
+CAL_POSE_Q = np.zeros(14)    # posture de calibration (Y) : position zéro du G1 = coudes ~80°, avant-bras vers l'avant
+CAL_MOVE_S = 2.5             # durée du trajet vers la posture de calibration (s)  # joystick droit : zone morte de la rotation du buste
 START          = False  # Enable to start robot following VR user motion
 STOP           = False  # Enable to begin system exit procedure
 READY          = False  # Ready to (1) enter START state, (2) enter RECORD_RUNNING state
@@ -357,6 +360,9 @@ if __name__ == '__main__':
         hold_ik = None                 # cibles figées quand la politique ne pilote pas
         torso_yaw_offset = 0.0         # mode politique : correction de rotation du buste par l'opérateur
         last_noimg_log = 0.0
+        cal = {"paused": False, "t0": 0.0, "q0": np.zeros(14),
+               "offset": {"left": np.zeros(3), "right": np.zeros(3)}}
+        prev_cY = False
         loop_count = -1
         timing_acc = {"n": 0, "ik": 0.0, "lag": 0.0, "dpos": 0.0, "prev_t": None, "t0": time.time()}
         episode_steps = 0
@@ -466,6 +472,28 @@ if __name__ == '__main__':
                 if rB and not prev_rB:
                     RECORD_CANCEL = True
                 prev_rA, prev_rB = rA, rB
+            # Y gauche (téléop, hors mode politique) : PAUSE du suivi -> bras vers la posture de calibration
+            # (q = 0 : bras le long du corps, avant-bras vers l'avant, coude ~80°) ; second appui = REPRISE
+            # avec recalage : la pose actuelle des manettes devient celle des mains du robot (pas de saut)
+            if bridge is None and args.input_mode == "controller" and START and args.arm == "G1_29":
+                cY = bool(tele_data.left_ctrl_bButton)
+                if cY and not prev_cY:
+                    if not cal["paused"]:
+                        cal.update(paused=True, t0=time.time(), q0=np.asarray(arm_ctrl.get_current_dual_arm_q()).copy())
+                        logger_mp.info("⏸️  Suivi en PAUSE : bras vers la posture de calibration (coudes à 90°). "
+                                       "Mettez-vous dans la même posture puis Y pour reprendre.")
+                    else:
+                        pin.framesForwardKinematics(arm_ik.reduced_robot.model, arm_ik.reduced_robot.data,
+                                                    np.asarray(arm_ctrl.get_current_dual_arm_q()))
+                        for s_, fr in (("left", "L_ee"), ("right", "R_ee")):
+                            p_robot = arm_ik.reduced_robot.data.oMf[arm_ik.reduced_robot.model.getFrameId(fr)].translation
+                            p_hand = np.asarray(getattr(tele_data, f"{s_}_wrist_pose"))[:3, 3]
+                            cal["offset"][s_] = np.asarray(p_robot) - p_hand
+                        arm_ik.smooth_filter = WeightedMovingFilter(arm_ik.smooth_filter._weights, 14)
+                        cal["paused"] = False
+                        logger_mp.info(f"▶️  Suivi REPRIS, recalé : décalage gauche {np.round(cal['offset']['left'], 3)} m, "
+                                       f"droite {np.round(cal['offset']['right'], 3)} m")
+                prev_cY = cY
             if bridge is not None and args.record and START:
                 lX, lY = bool(tele_data.left_ctrl_aButton), bool(tele_data.left_ctrl_bButton)
                 if RECORD_RUNNING and not RECORD_CANCEL and not tele_data.right_ctrl_bButton \
@@ -483,6 +511,8 @@ if __name__ == '__main__':
                     right_hand_pos_array[:] = tele_data.right_hand_pos.flatten()
             elif args.ee == "dex1" and args.input_mode == "controller" and bridge is not None:
                 pass                       # mode politique : la pince est commandée plus bas (politique ou tenue)
+            elif args.ee == "dex1" and args.input_mode == "controller" and cal["paused"]:
+                pass                                   # pause de calibration : pinces figées
             elif args.ee == "dex1" and args.input_mode == "controller":
                 if not args.right_only:
                     with left_gripper_value.get_lock():
@@ -528,6 +558,10 @@ if __name__ == '__main__':
             # solve ik using motor data and wrist pose, then use ik results to control arms.
             time_ik_start = time.time()
             left_target, right_target = tele_data.left_wrist_pose, tele_data.right_wrist_pose
+            if bridge is None and (np.any(cal["offset"]["left"]) or np.any(cal["offset"]["right"])):
+                left_target, right_target = np.array(left_target, float), np.array(right_target, float)
+                left_target[:3, 3] += cal["offset"]["left"]
+                right_target[:3, 3] += cal["offset"]["right"]
             if bridge is not None:
                 policy_active = (RECORD_RUNNING if args.record else START) and not policy_failed
                 body_q = arm_ctrl.get_current_motor_q()
@@ -599,7 +633,16 @@ if __name__ == '__main__':
                 else:
                     # politique en tenue, ou rotation non prédite : buste FIGÉ à sa consigne courante
                     arm_ctrl.hold_torso_yaw()
-            sol_q, sol_tauff  = arm_ik.solve_ik(left_target, right_target, current_lr_arm_q, current_lr_arm_dq)
+            if cal["paused"]:
+                a_ = min(1.0, (time.time() - cal["t0"]) / CAL_MOVE_S)
+                a_ = a_ * a_ * (3 - 2 * a_)                       # départ et arrivée en douceur
+                sol_q = (1 - a_) * cal["q0"] + a_ * CAL_POSE_Q
+                sol_tauff = pin.rnea(arm_ik.reduced_robot.model, arm_ik.reduced_robot.data, sol_q,
+                                     np.zeros(14), np.zeros(14))  # compensation de gravité
+                if args.torso_yaw_index is not None:
+                    arm_ctrl.hold_torso_yaw()
+            else:
+                sol_q, sol_tauff  = arm_ik.solve_ik(left_target, right_target, current_lr_arm_q, current_lr_arm_dq)
             time_ik_end = time.time()
             if args.timing:
                 tm = timing_acc
@@ -768,6 +811,8 @@ if __name__ == '__main__':
                     extra_kw = {"sim_state": sim_state_subscriber.read_data()} if args.sim else {}
                     if not frame_ok:
                         pass                           # image manquante : pas sauté (le convertisseur l'exige)
+                    elif cal["paused"]:
+                        pass                           # pause de calibration : pas non enregistrés
                     elif bridge is None:
                         recorder.add_item(colors=colors, depths=depths, states=states, actions=actions, **extra_kw)
                         episode_steps += 1
