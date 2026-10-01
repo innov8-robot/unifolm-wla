@@ -25,7 +25,8 @@ fi
 PIP=("$CONDA" run -n "$ENV_NAME" --no-capture-output python -m pip)
 
 "${PIP[@]}" install "vuer[all]==0.0.60" params-proto==2.13.2 pyyaml pyzmq logging-mp==0.2.0 \
-    meshcat==0.3.2 matplotlib rerun-sdk==0.23.1 sshkeyboard==2.3.1 opencv-python==4.11.0.86 "numpy==1.26.4"
+    meshcat==0.3.2 matplotlib rerun-sdk==0.23.1 sshkeyboard==2.3.1 opencv-python==4.11.0.86 "numpy==1.26.4" \
+    "PySide6>=6.6"                                    # Dataset Studio (python -m dataset_studio)
 "${PIP[@]}" install -e "$SDK"                       # tire cyclonedds==0.10.2
 "${PIP[@]}" install -e "$XR/teleop/teleimager" --no-deps
 "${PIP[@]}" install -e "$XR/teleop/televuer"

@@ -1,6 +1,6 @@
 """Dataset Studio : voir, contrôler et modifier les enregistrements xr_teleoperate du G1-D.
 
-    ~/miniconda3/envs/unitree_lerobot/bin/python -m dataset_studio [dossier]
+    conda activate g1d_teleop && python -m dataset_studio [dossier]      # depuis la racine du dépôt
 
 Le dossier est une tâche (contenant des episode_XXXX/) ou un dossier de tâches (ex. utils/data).
 
