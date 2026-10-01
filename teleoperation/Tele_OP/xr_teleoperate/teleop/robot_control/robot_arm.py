@@ -217,7 +217,9 @@ class G1_29_ArmController:
 
             if self._speed_gradual_max is True:
                 t_elapsed = start_time - self._gradual_start_time
-                self.arm_velocity_limit = 20.0 + (10.0 * min(1.0, t_elapsed / 5.0))
+                # G1-D : départ à 1 rad/s (au lieu de 20) puis montée sur 5 s, pour qu'un écart entre la
+                # pose des manettes et celle du robot à l'appui sur [r] ne donne pas un mouvement brusque
+                self.arm_velocity_limit = 1.0 + (29.0 * min(1.0, t_elapsed / 5.0))
 
             current_time = time.time()
             all_t_elapsed = current_time - start_time
