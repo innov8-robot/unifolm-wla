@@ -31,12 +31,43 @@ def _rot_y(a: float) -> np.ndarray:
     return np.array([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])
 
 
-def base_T_torso(torso_pitch: float) -> np.ndarray:
-    """Pose 4×4 de ``torso_link`` dans la base WLA pour un tangage de buste donné."""
+def _rot_z(a: float) -> np.ndarray:
+    c, s = np.cos(a), np.sin(a)
+    return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+
+
+def base_T_torso(torso_pitch: float, torso_yaw: float = 0.0) -> np.ndarray:
+    """Pose 4×4 de ``torso_link`` dans la base WLA. Chaîne du G1-D : tangage du buste
+    (``Yaw_Joint``, axe y malgré son nom) PUIS rotation gauche-droite (``torso_Joint``, axe z),
+    les deux pivots étant à l'origine du torse : la base WLA reste fixe quand le buste tourne."""
     T = np.eye(4)
-    T[:3, :3] = _rot_y(float(torso_pitch))
+    T[:3, :3] = _rot_y(float(torso_pitch)) @ _rot_z(float(torso_yaw))
     T[:3, 3] = G1_PELVIS_TO_TORSO_XYZ
     return T
+
+
+def waist_from_torso(torso_pitch, torso_yaw=0.0) -> np.ndarray:
+    """Slot taille WLA [yaw, roll, pitch] du G1 (chaîne Rz·Rx·Ry) qui donne la MÊME orientation
+    de torse que le G1-D (Ry(tangage)·Rz(lacet)). Lacet nul -> [0, 0, tangage]. Vectorisé."""
+    p, y = np.broadcast_arrays(np.asarray(torso_pitch, float), np.asarray(torso_yaw, float))
+    cp, sp, cy, sy = np.cos(p), np.sin(p), np.cos(y), np.sin(y)
+    # R = Ry(p) Rz(y) : colonnes utiles pour Rz(a) Rx(b) Ry(c)
+    r01, r11 = -cp * sy, cy
+    r20, r21, r22 = -sp * cy, sp * sy, cp
+    return np.stack([np.arctan2(-r01, r11), np.arcsin(np.clip(r21, -1, 1)), np.arctan2(-r20, r22)], axis=-1)
+
+
+def torso_from_waist(waist) -> tuple[np.ndarray, np.ndarray]:
+    """Inverse (au roulis résiduel près) : taille WLA [yaw, roll, pitch] -> (tangage, lacet) G1-D."""
+    w = np.asarray(waist, float)
+    a, b, c = w[..., 0], w[..., 1], w[..., 2]
+    ca, sa, cb, sb, cc, sc = np.cos(a), np.sin(a), np.cos(b), np.sin(b), np.cos(c), np.sin(c)
+    # R = Rz(a) Rx(b) Ry(c) ; G1-D : R = Ry(p) Rz(y) -> p = atan2(R02, R22), y = atan2(R10, R11)
+    r02 = ca * sc + sa * sb * cc
+    r22 = cb * cc
+    r10 = sa * cc + ca * sb * sc
+    r11 = ca * cb
+    return np.arctan2(r02, r22), np.arctan2(r10, r11)
 
 
 def wrist_T_ee(side: str) -> np.ndarray:

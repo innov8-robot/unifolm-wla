@@ -22,6 +22,7 @@ from PIL import Image
 from g1d_sim import SIDES, G1DSim
 
 TORSO_PITCH_INDEX = 13
+TORSO_YAW_INDEX = 12          # même place que waist_yaw dans la disposition G1_29
 ARM_BODY_SLICE = {"left": slice(15, 22), "right": slice(22, 29)}
 VIEWS = ("head_left", "cam_wrist_left", "cam_wrist_right")
 #: pince Dex1 grande ouverte, unité moteur (xr_teleoperate : 0 fermée -> 5.4 ouverte)
@@ -48,6 +49,7 @@ class SimEpisodeWriter:
             colors[f"color_{k}"] = name
         body = np.zeros(35)
         body[TORSO_PITCH_INDEX] = sim.torso_pitch()
+        body[TORSO_YAW_INDEX] = sim.torso_yaw()
         states, actions = {}, {}
         for s in SIDES:
             q = sim.arm_q(s)
@@ -66,7 +68,8 @@ class SimEpisodeWriter:
 
     def save(self, goal: str, desc: str, source: str, info_extra: dict | None = None) -> None:
         info = {"version": "1.0.0", "author": "g1d_sim", "image": {"width": 640, "height": 480, "fps": 30.0},
-                "source": source}
+                "source": source,
+                "body_layout": {"torso_pitch": TORSO_PITCH_INDEX, "torso_yaw": TORSO_YAW_INDEX}}
         if info_extra:
             info.update(info_extra)
         doc = {"info": info, "text": {"goal": goal, "desc": desc, "steps": ""}, "data": self.steps}

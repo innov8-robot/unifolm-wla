@@ -7,7 +7,7 @@ pour que la config de données WLA les lise sans adaptation :
   la base WLA (bassin virtuel du G1), point effecteur WLA, xyz + euler ``xyz`` extrinsèque ;
 * pinces : unité moteur Dex1 (0 fermée → ~5.4 ouverte), identique à l'entraînement : copiée telle
   quelle ;
-* taille ``[yaw, roll, pitch]`` = [0, 0, tangage du buste] ; jambes = G1 debout (slots valides) ;
+* taille ``[yaw, roll, pitch]`` = taille G1 équivalente au buste G1-D (tangage, rotation : ``waist_from_torso``) ;
 * ``action.base_command`` = [vx, vy, vyaw, hauteur de bassin équivalente] ;
 * images : œil gauche BRUT -> ``head_stereo_left`` (+ œil droit), poignets -> ``wrist_left/right``.
 
@@ -31,7 +31,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from .frames import (G1_BASE_HEIGHT, G1_STANDING_LEGS, SIDES, base_T_torso, matrix_to_xyz_rpy,
+from .frames import (G1_BASE_HEIGHT, G1_STANDING_LEGS, SIDES, base_T_torso, matrix_to_xyz_rpy, waist_from_torso,
                      wrist_T_ee)
 from .urdf_fk import ArmFK
 
@@ -104,23 +104,27 @@ def build_features(image_keys: dict, with_advantage: bool = False) -> dict:
 
 def load_episode(ep_dir: Path) -> dict:
     d = json.loads((ep_dir / "data.json").read_text())
-    return {"text": d.get("text", {}), "steps": d["data"]}
+    return {"text": d.get("text", {}), "steps": d["data"], "info": d.get("info", {})}
 
 
 def convert_episode(ep: dict, fk: dict, torso_pitch_index: int | None, torso_pitch_const: float | None,
-                    base_height: float) -> dict:
+                    base_height: float, torso_yaw_index: int | None = None) -> dict:
     """Un épisode -> dict de tableaux (T, …) aux clés WLA (sans les images)."""
     steps = ep["steps"]
     T = len(steps)
     out = {}
     body = np.array([s["states"]["body"]["qpos"] for s in steps], float) if steps[0]["states"]["body"]["qpos"] else None
+    layout = ep.get("info", {}).get("body_layout", {})     # écrit par l'enregistreur : prioritaire
+    torso_pitch_index = layout.get("torso_pitch", torso_pitch_index)
+    torso_yaw_index = layout.get("torso_yaw", torso_yaw_index)
+    yaw = body[:, torso_yaw_index] if body is not None and torso_yaw_index is not None else np.zeros(T)
     if torso_pitch_const is not None:
         pitch = np.full(T, torso_pitch_const)
     elif body is not None and torso_pitch_index is not None:
         pitch = body[:, torso_pitch_index]
     else:
         raise ValueError("tangage du buste introuvable : body.qpos vide, passer --torso-pitch")
-    B_torso = np.stack([base_T_torso(p) for p in pitch])                     # (T, 4, 4)
+    B_torso = np.stack([base_T_torso(p, y) for p, y in zip(pitch, yaw)])     # (T, 4, 4)
 
     for kind, key in (("observation.state", "states"), ("action", "actions")):
         for s in SIDES:
@@ -130,7 +134,7 @@ def convert_episode(ep: dict, fk: dict, torso_pitch_index: int | None, torso_pit
             out[f"{kind}.{s}_ee_pose_gripper_base"] = matrix_to_xyz_rpy(ee)
             out[f"{kind}.{s}_gripper"] = np.array([st[key][f"{s}_ee"]["qpos"][:1] for st in steps], float)
             out[f"{kind}.{s}_leg"] = np.tile(G1_STANDING_LEGS[s], (T, 1))
-    waist = np.stack([np.zeros(T), np.zeros(T), pitch], axis=1)
+    waist = waist_from_torso(pitch, yaw)                                     # [yaw, roll, pitch] G1
     out["observation.state.waist_state_joint"] = waist
     out["action.waist_action_joint"] = waist
     out["observation.state.state_torso"] = matrix_to_xyz_rpy(B_torso)
@@ -148,6 +152,9 @@ def main() -> None:
     ap.add_argument("--torso-pitch-index", type=int, default=13,
                     help="indice du tangage du buste dans states.body.qpos (35 moteurs). HYPOTHÈSE : 13, à vérifier")
     ap.add_argument("--torso-pitch", type=float, default=None, help="tangage constant (rad), remplace l'indice")
+    ap.add_argument("--torso-yaw-index", type=int, default=None,
+                    help="indice de la rotation du buste dans body.qpos ; défaut : info.body_layout de l'épisode, "
+                         "sinon buste non tourné")
     ap.add_argument("--base-height", type=float, default=G1_BASE_HEIGHT,
                     help="hauteur de bassin G1 équivalente pour action.base_command (défaut : médiane G1)")
     ap.add_argument("--episodes", type=int, nargs="*", default=None, help="indices d'épisodes à convertir")
@@ -201,7 +208,8 @@ def main() -> None:
     for n, ep_dir in enumerate(ep_dirs):
         ep = load_episode(ep_dir)
         task = args.task or ep["text"].get("goal") or "manipulation"
-        arrays = convert_episode(ep, fk, args.torso_pitch_index, args.torso_pitch, args.base_height)
+        arrays = convert_episode(ep, fk, args.torso_pitch_index, args.torso_pitch, args.base_height,
+                                 args.torso_yaw_index)
         for t, st in enumerate(ep["steps"]):
             frame = {k: v[t] for k, v in arrays.items()}
             for ck, fk_name in IMAGE_LAYOUTS[layouts[ep_dir.name]].items():

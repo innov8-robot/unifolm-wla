@@ -38,8 +38,8 @@ from .kinematics import ARM_JOINTS, ArmKinematics
 _REPO = Path(__file__).resolve().parents[2]
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
-from g1d_wla.frames import (G1_PELVIS_TO_TORSO_XYZ, G1_STANDING_LEGS,  # noqa: E402
-                            TORSO_PITCH_TRAINING as TORSO_PITCH, WLA_EE_IN_WRIST)
+from g1d_wla.frames import (G1_STANDING_LEGS, TORSO_PITCH_TRAINING as TORSO_PITCH,  # noqa: E402
+                            WLA_EE_IN_WRIST, base_T_torso, waist_from_torso)
 
 ASSETS = Path(__file__).resolve().parents[1] / "assets"
 SCENE_XML = ASSETS / "scene_g1d.xml"
@@ -60,7 +60,9 @@ TORSO_JOINT = "Yaw_Joint"
 #: joints hors bras tenus fixes : colonne télescopique (2 étages) en butée basse, buste DROIT
 #: au reset. Le buste ne s'incline qu'une fois les bras au-dessus de la table (``go_ready``) :
 #: incliné en tuck, les poignets entrent dans la table et la physique diverge (mesuré).
-LOCKED_JOINTS = {"LZ_mt_Joint": 0.0, "LZ_it_Joint": 0.0, TORSO_JOINT: 0.0}
+#: rotation gauche-droite du buste (axe z, ±155°), montée AU-DESSUS du tangage
+TORSO_YAW_JOINT = "torso_Joint"
+LOCKED_JOINTS = {"LZ_mt_Joint": 0.0, "LZ_it_Joint": 0.0, TORSO_JOINT: 0.0, TORSO_YAW_JOINT: 0.0}
 #: pose de DÉPART des épisodes G1 Dex1 : angles médians des bras à la frame 0 (40 épisodes de
 #: G1_Dex1_Stack_Block). Les bras G1 et G1-D étant identiques (au poignet près, 5 mm), ces angles
 #: redonnent la pose effecteur de départ du G1 dans la base WLA (vérifié : ~5 mm, ~0.05 rad).
@@ -154,7 +156,27 @@ class G1DSim:
         puis recale ``mj_pin``. À appeler après tout changement de ces joints."""
         measured = {n: float(self.d.qpos[self.m.joint(n).qposadr[0]]) for n in LOCKED_JOINTS}
         self.kin = {s: ArmKinematics(self._urdf, s, measured) for s in SIDES}
+        self._kin_yaw = measured[TORSO_YAW_JOINT]
         self._refresh_mj_pin()
+
+    def torso_yaw(self) -> float:
+        """Rotation gauche-droite MESURÉE du buste (rad, + = vers la gauche)."""
+        return float(self.d.qpos[self.m.joint(TORSO_YAW_JOINT).qposadr[0]])
+
+    def command_torso_yaw(self, yaw: float) -> None:
+        """Consigne de rotation du buste. La FK/IK des bras suit la rotation MESURÉE à chaque pas
+        (``step``) : une cible effecteur en base WLA reste atteinte pendant que le buste tourne."""
+        self.d.ctrl[self.m.actuator(TORSO_YAW_JOINT).id] = float(yaw)
+
+    def about_torso_yaw(self, dyaw: float) -> np.ndarray:
+        """4×4 monde : rotation de ``dyaw`` autour de l'axe du buste (pour tester l'atteignabilité
+        d'une pose avec un buste tourné, sans le tourner)."""
+        T_wt = np.eye(4)
+        T_wt[:3, :3] = self.d.body("torso_link").xmat.reshape(3, 3)
+        T_wt[:3, 3] = self.d.body("torso_link").xpos
+        Rz = np.eye(4)
+        Rz[:3, :3] = pin.utils.rpyToMatrix(0.0, 0.0, dyaw)
+        return T_wt @ Rz @ np.linalg.inv(T_wt)
 
     def torso_pitch(self) -> float:
         """Tangage MESURÉ du buste (rad)."""
@@ -208,6 +230,8 @@ class G1DSim:
             self._apply_gravity()
             for _ in range(self.sous_pas):
                 mujoco.mj_step(self.m, self.d)
+            if abs(self.torso_yaw() - self._kin_yaw) > 1e-4:   # buste en rotation : FK/IK recalées
+                self._refresh_kinematics()
 
     @property
     def time(self) -> float:
@@ -310,10 +334,7 @@ class G1DSim:
         T_wt = np.eye(4)
         T_wt[:3, :3] = self.d.body("torso_link").xmat.reshape(3, 3)
         T_wt[:3, 3] = self.d.body("torso_link").xpos
-        T_bt = np.eye(4)
-        T_bt[:3, :3] = pin.utils.rpyToMatrix(0.0, self.torso_pitch(), 0.0)
-        T_bt[:3, 3] = G1_PELVIS_TO_TORSO_XYZ
-        return T_wt @ np.linalg.inv(T_bt)
+        return T_wt @ np.linalg.inv(base_T_torso(self.torso_pitch(), self.torso_yaw()))
 
     def _tcp_to_ee(self, side: str) -> np.ndarray:
         """Transformation fixe TCP sim -> effecteur WLA (4×4)."""
@@ -345,8 +366,9 @@ class G1DSim:
 
     def waist_wla(self) -> np.ndarray:
         """Slot taille WLA [yaw, roll, pitch] : chez le G1, le tangage de la taille EST le
-        tangage du buste (égalité vérifiée sur un épisode). Le G1-D n'a que le tangage."""
-        return np.array([0.0, 0.0, self.torso_pitch()])
+        tangage du buste (égalité vérifiée sur un épisode). Avec la rotation du buste, taille G1
+        équivalente (même orientation de torse, ``waist_from_torso``)."""
+        return waist_from_torso(self.torso_pitch(), self.torso_yaw())
 
     # ------------------------------------------------------------------ pinces
     def set_gripper(self, side: str, closure: float) -> None:

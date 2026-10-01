@@ -32,6 +32,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "model_server"))
 from g1d_sim import SCENE_CUBE_XML, SCENE_XML, SIDES, G1DSim  # noqa: E402
+from g1d_wla.frames import torso_from_waist  # noqa: E402
 from tools import msgpack_numpy  # noqa: E402
 
 #: pince Dex1 grande ouverte, unité moteur (xr_teleoperate : 0 fermée -> 5.4 ouverte)
@@ -100,10 +101,13 @@ async def run_chunks(ws, packer, sim, args, frames, max_steps, done=None) -> tup
         dt = time.perf_counter() - t0
         chunk = {s: np.asarray(act[f"action.{s}_ee_rpy"])[0] for s in SIDES}
         grip = {s: np.asarray(act[f"action.{s}_gripper"])[0, :, 0] for s in SIDES}
+        waist = np.asarray(act["action.lower_body"])[0, :, 12:15] if getattr(args, "waist_yaw", False) else None
         n_exec = min(args.exec_steps, len(chunk["left"]), max_steps - steps)
         refused = {s: 0 for s in SIDES}
         ee_before = {s: sim.ee_pose_wla(s)[:3, 3].copy() for s in SIDES}
         for t in range(n_exec):
+            if waist is not None:              # rotation du buste prédite (taille G1 -> buste G1-D)
+                sim.command_torso_yaw(float(torso_from_waist(waist[t])[1]))
             for s in SIDES:
                 refused[s] += not sim.track_ee_wla(s, xyz_rpy_to_matrix(chunk[s][t]))
                 sim.set_gripper(s, dex1_to_closure(grip[s][t]))
@@ -219,6 +223,8 @@ def main() -> None:
                          "Il faut --exec-steps + --rtc-prefix <= 30")
     ap.add_argument("--rtc-soft", dest="rtc_soft", type=int, default=0,
                     help="raccord doux : pas après le préfixe à poids décroissant (0 = préfixe dur)")
+    ap.add_argument("--waist-yaw", dest="waist_yaw", action="store_true",
+                    help="appliquer la rotation du buste prédite (slot taille de action.lower_body)")
     ap.add_argument("--stop-on-success", dest="stop_on_success", action="store_true",
                     help="arrêter l'épisode dès la réussite (évaluations rapides)")
     ap.add_argument("--exec-steps", dest="exec_steps", type=int, default=20,

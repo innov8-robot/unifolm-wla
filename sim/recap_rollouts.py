@@ -36,6 +36,7 @@ from g1d_sim import SIDES, G1DSim  # noqa: E402
 from sim_episode_writer import SimEpisodeWriter  # noqa: E402
 from sim_tasks import get_task  # noqa: E402
 from tools import msgpack_numpy  # noqa: E402
+from g1d_wla.frames import torso_from_waist  # noqa: E402
 from wla_client import build_obs, dex1_to_closure, xyz_rpy_to_matrix  # noqa: E402
 
 TABLE_DROP = 0.05      # objet tombé de la table : plus de correction possible
@@ -80,9 +81,12 @@ async def run_episode(ws, packer, sim: G1DSim, task, rng, args, w: SimEpisodeWri
         act = msgpack_numpy.unpackb(raw)
         chunk = {s: np.asarray(act[f"action.{s}_ee_rpy"])[0] for s in SIDES}
         grip = {s: np.asarray(act[f"action.{s}_gripper"])[0, :, 0] for s in SIDES}
+        waist = np.asarray(act["action.lower_body"])[0, :, 12:15] if args.waist_yaw else None
         n = min(args.exec_steps, len(chunk["left"]))
         knocked = False
         for k in range(n):
+            if waist is not None:
+                sim.command_torso_yaw(float(torso_from_waist(waist[k])[1]))
             if args.miss_steps and sim.gripper("right") > 0.95:
                 closed_empty += 1         # pince fermée à fond : rien entre les doigts
             else:
@@ -184,6 +188,8 @@ def main() -> None:
     ap.add_argument("--no-operator", dest="operator", action="store_false",
                     help="pas de corrections (rollouts purement autonomes)")
     ap.add_argument("--exec-steps", dest="exec_steps", type=int, default=30)
+    ap.add_argument("--waist-yaw", dest="waist_yaw", action="store_true",
+                    help="appliquer la rotation du buste prédite")
     ap.add_argument("--rtc-prefix", dest="rtc_prefix", type=int, default=0)
     ap.add_argument("--rtc-soft", dest="rtc_soft", type=int, default=0)
     ap.add_argument("--seed", type=int, default=2000)

@@ -51,6 +51,8 @@ class StackParams(N.NovaresParams):
     t_place: int = 30
     t_open: int = 15
     t_retreat: int = 25
+    torso_yaw: float = 0.0      # rotation du buste vers le support pendant transport et dépôt (rad,
+                                # + = gauche) : rapproche la pose de dépôt du bras droit
 
 
 def nest_offset() -> np.ndarray:
@@ -93,7 +95,10 @@ def stack_error(sim: G1DSim) -> tuple[float, float]:
 def _execute(sim: G1DSim, plan: list, t0: int, hold_left: np.ndarray, on_step) -> int:
     """Exécute un morceau de plan ; rend le nombre de refus d'IK du bras droit."""
     refused = 0
-    for k, (kind, p, R, closure) in enumerate(plan):
+    for k, step in enumerate(plan):
+        kind, p, R, closure = step[:4]
+        if len(step) > 4:                       # consigne de rotation du buste
+            sim.command_torso_yaw(step[4])
         if kind == "joint":
             sim.set_arm_target("right", p)
         else:
@@ -140,6 +145,13 @@ def _place_pose(sim: G1DSim, clear: float) -> np.ndarray:
     return T
 
 
+def _reachable(sim: G1DSim, M_base: np.ndarray, yaw: float) -> bool:
+    """Effecteur ``M_base`` (base WLA) atteignable par le bras droit avec le buste tourné à ``yaw``."""
+    B, X = sim.base_pose_wla(), np.linalg.inv(sim._tcp_to_ee("right"))
+    W = sim.about_torso_yaw(sim.torso_yaw() - yaw) @ B @ M_base @ X
+    return bool(sim.solve_ik("right", W, q0=sim.arm_q("right"), follow=False)[1])
+
+
 def _pick_grasp(sim: G1DSim, cands: list, params: StackParams):
     """Première prise (la plus verticale) dont le DÉPÔT est aussi atteignable : pièce supposée fixe
     dans la pince, amenée sur sa pose emboîtée (et au-dessus) par un simple lacet."""
@@ -156,7 +168,7 @@ def _pick_grasp(sim: G1DSim, cands: list, params: StackParams):
         Tp[2, 3] += params.place_clear
         Tab = Tp.copy()
         Tab[2, 3] += params.carry_up
-        if all(sim.solve_ik("right", B @ M @ X, q0=sim.arm_q("right"), follow=False)[1] for M in (Tp, Tab)):
+        if all(_reachable(sim, M, params.torso_yaw) for M in (Tp, Tab)):
             return Tg
     return None
 
@@ -209,14 +221,16 @@ def run_expert(sim: G1DSim, g: N.NovaresGrasp, params: StackParams = StackParams
     above = Tp[:3, 3] + np.array([0.0, 0.0, params.carry_up])
     Tab = Tp.copy()
     Tab[:3, 3] = above
-    if not all(sim.solve_ik("right", B @ M @ X, q0=sim.arm_q("right"), follow=False)[1] for M in (Tab, Tp)):
+    if not all(_reachable(sim, M, params.torso_yaw) for M in (Tab, Tp)):
         return {"success": False, "lifted": 0.0, "steps": t, "ik_refused": -1, "reason": "dépôt inatteignable"}
+    y0, y1 = sim.torso_yaw(), params.torso_yaw
     Tl = sim.ee_pose_wla("right")
     slerp = Slerp([0.0, 1.0], Rotation.from_matrix(np.stack([Tl[:3, :3], Tp[:3, :3]])))
     s = np.linspace(0.0, 1.0, params.t_carry + 1)[1:]
     s = 10 * s**3 - 15 * s**4 + 6 * s**5
-    plan = [("cart", p, slerp(si).as_matrix(), 1.0) for si, p in zip(s, _minjerk(Tl[:3, 3], above, params.t_carry))]
-    plan += [("cart", above, Tp[:3, :3], 1.0)] * 10                 # stabiliser avant de remesurer
+    plan = [("cart", p, slerp(si).as_matrix(), 1.0, y0 + si * (y1 - y0))
+            for si, p in zip(s, _minjerk(Tl[:3, 3], above, params.t_carry))]
+    plan += [("cart", above, Tp[:3, :3], 1.0, y1)] * 10             # stabiliser avant de remesurer
     refused += _execute(sim, plan, t, hold_left, on_step)
     t += len(plan)
 
@@ -248,7 +262,9 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Taux de réussite de l'expert d'empilement, sans rendu.")
     ap.add_argument("--n", type=int, default=20)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--yaw", type=float, default=StackParams.torso_yaw, help="rotation du buste au dépôt (rad)")
     a = ap.parse_args()
+    params = StackParams(torso_yaw=a.yaw)
     rng = np.random.default_rng(a.seed)
     g = N.NovaresGrasp()
     sim = G1DSim(scene_xml=SCENE_STACK_XML)
@@ -258,7 +274,7 @@ if __name__ == "__main__":
         sim.reset()
         sim.go_ready()
         place_pieces(sim, rng, pose0)
-        r = run_expert(sim, g)
+        r = run_expert(sim, g, params)
         ok += r["success"]
         print(f"{i:3d} {'OK ' if r['success'] else 'RATÉ'} écart {r.get('stack_err_mm', '-')} mm / "
               f"{r.get('stack_err_deg', '-')}°  support déplacé {r.get('support_moved_mm', '-')} mm  "
