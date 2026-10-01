@@ -45,6 +45,14 @@ Ce fork adapte **UnifoLM-WLA-1.0** d'Unitree au **G1-D** : robot sur base roulan
 | Fine-tuning sur de vraies démos | Recette prête et validée en sim |
 | Push de `g1d-port` sur GitHub | **Fait**, à refaire après chaque étape |
 
+### Outils
+
+- **Dataset Studio** (`dataset_studio/`, PySide6, thème du cockpit de mpc_any) : voir et modifier les enregistrements de la téléop. Liste des épisodes (durée, issue, pinces utilisées, base / colonne, images manquantes), lecture des 4 caméras synchronisées, courbes (articulations état / consigne, pinces, buste, colonne, base), suppression vers une corbeille avec renumérotation sans trou, restauration, rognage début / fin, consigne et issue modifiables, conversion au format WLA en un clic.
+  ```bash
+  ~/miniconda3/envs/unitree_lerobot/bin/python -m dataset_studio teleoperation/Tele_OP/xr_teleoperate/teleop/utils/data
+  ```
+  Raccourcis : Espace lecture · ←/→ pas à pas · Maj+←/→ ±1 s · ↑/↓ épisode · I / O rognage · Suppr supprimer.
+
 ### TODO
 
 Par ordre de priorité. Cocher au fur et à mesure.
@@ -471,3 +479,7 @@ Référence complète : section 9 de `docs/G1D_Constats.md`.
 | `docs/robot_action_state_processing_en.md` | Spec officielle des espaces état et action |
 | `docs/train_action_expert_en.md` | Doc officielle d'installation, d'entraînement et de serveur |
 | `teleoperation/Tele_OP/xr_teleoperate/README.md` | Doc officielle de xr_teleoperate |
+
+
+python teleop_hand_and_arm.py --network-interface=enx0c3796e0bc5b --img-server-ip=192.168.123.164 --input-mode=controller --arm=G1_29 --ee=dex1 --torso-pitch 0.166  --frequency 60 --ik-smooth light --timing --torso-yaw-index 12 --torso-yaw-max 1.0 --torso-yaw-rate 0.5 --base --column --record --task-name=napkin --task-goal="fold a green napkin"
+
