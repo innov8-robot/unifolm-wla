@@ -145,6 +145,9 @@ if __name__ == '__main__':
     parser.add_argument('--policy-max-speed', type=float, default=0.10, help='vitesse max des cibles (m/s) ; commencer bas')
     parser.add_argument('--torso-pitch-index', type=int, default=13, help='indice du tangage du buste dans les 35 moteurs (HYPOTHÈSE)')
     parser.add_argument('--torso-pitch', type=float, default=None, help='tangage du buste constant (rad), remplace --torso-pitch-index')
+    parser.add_argument('--dex1-bus', choices=['internal', 'usb'], default='internal',
+                        help="Dex1 : 'internal' = câblées par les poignets, moteurs 31/33 du LowCmd (G1-D) ; "
+                             "'usb' = service dex1_1_gripper et topics rt/dex1/* (amont)")
     parser.add_argument('--torso-yaw-index', type=int, default=None,
                         help='G1-D : indice du moteur de rotation du buste (torso_Joint) dans les 35 moteurs. '
                              'Active la rotation au joystick droit (gauche/droite). HYPOTHÈSE à vérifier sur le robot')
@@ -155,6 +158,8 @@ if __name__ == '__main__':
     logger_mp.info(f"args: {args}")
     if args.policy_uri and not (args.arm == "G1_29" and args.ee == "dex1" and args.input_mode == "controller" and not args.motion):
         parser.error("--policy-uri demande --arm G1_29 --ee dex1 --input-mode controller, sans --motion")
+    if args.ee == "dex1" and args.dex1_bus == "internal" and not args.sim and args.arm != "G1_29":
+        parser.error("--dex1-bus internal demande --arm G1_29 (commande dans le LowCmd des bras)")
     if args.torso_yaw_index is not None and not (args.arm == "G1_29" and args.input_mode == "controller" and not args.motion):
         parser.error("--torso-yaw-index demande --arm G1_29 --input-mode controller, sans --motion "
                      "(en --motion, le joystick droit tourne la base)")
@@ -268,8 +273,14 @@ if __name__ == '__main__':
             dual_gripper_data_lock = Lock()
             dual_gripper_state_array = Array('d', 2, lock=False)   # current left, right gripper state(2) data.
             dual_gripper_action_array = Array('d', 2, lock=False)  # current left, right gripper action(2) data.
-            gripper_ctrl = Dex1_1_Gripper_Controller(left_gripper_value, right_gripper_value, dual_gripper_data_lock, 
-                                                     dual_gripper_state_array, dual_gripper_action_array, simulation_mode=args.sim)
+            if args.dex1_bus == "internal" and not args.sim:
+                # G1-D : Dex1 câblées en interne, moteurs 31/33 du LowCmd des bras (un seul publieur)
+                from teleop.robot_control.dex1_internal import Dex1InternalGripperController
+                gripper_ctrl = Dex1InternalGripperController(left_gripper_value, right_gripper_value, dual_gripper_data_lock,
+                                                             dual_gripper_state_array, dual_gripper_action_array, arm_ctrl)
+            else:
+                gripper_ctrl = Dex1_1_Gripper_Controller(left_gripper_value, right_gripper_value, dual_gripper_data_lock,
+                                                         dual_gripper_state_array, dual_gripper_action_array, simulation_mode=args.sim)
         elif args.ee == "inspire_dfx":
             from teleop.robot_control.robot_hand_inspire import Inspire_Controller_DFX
             left_hand_pos_array = Array('d', 75, lock = True)      # [input]

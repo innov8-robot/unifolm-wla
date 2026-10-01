@@ -86,6 +86,16 @@ class G1_29_ArmController:
         self._torso_yaw_cmd = 0.0
         self._torso_yaw_max = 0.6
         self._torso_yaw_rate = 0.5
+        # pinces Dex1 CÂBLÉES EN INTERNE (G1-D) : moteurs 31 (gauche) et 33 (droite) du même LowCmd,
+        # gains et course mesurés dans mpc_any (runtime/dex1_internal.py) : 0 fermée -> ~5.35 butée
+        self.dex1_internal = False
+        self.DEX1_IDX = (31, 33)
+        self.DEX1_KP, self.DEX1_KD = 5.0, 0.05
+        self.DEX1_Q_MAX = 5.2          # sous la butée ~5.35 : au-delà, couple de calage permanent
+        self.DEX1_RATE = 12.0          # rad/s (0,12 rad par cycle à 100 Hz dans mpc_any)
+        self.DEX1_LEAD = 0.45          # écart max consigne / mesure : pince bloquée sur un objet = force bornée
+        self._dex1_target = [0.0, 0.0]
+        self._dex1_cmd = [0.0, 0.0]
         self.TORSO_YAW_KP = 180.0      # gains du buste (G1-D, moteur waist_yaw), mesurés dans mpc_any
         self.TORSO_YAW_KD = 2.6
         self.TORSO_YAW_LEAD = 0.15     # écart max consigne / mesure (rad) : un buste bloqué ne force pas
@@ -187,6 +197,9 @@ class G1_29_ArmController:
                 self.msg.motor_cmd[id].dq = 0
                 self.msg.motor_cmd[id].tau = arm_tauff_target[idx]   
 
+            if self.dex1_internal:
+                self._apply_internal_grippers()
+
             if self.torso_yaw_index is not None:   # rotation du buste : vitesse bornée vers la cible
                 with self.ctrl_lock:
                     target = self._torso_yaw_target
@@ -242,6 +255,49 @@ class G1_29_ArmController:
             return
         with self.ctrl_lock:
             self._torso_yaw_target = float(np.clip(yaw, -self._torso_yaw_max, self._torso_yaw_max))
+
+    def _apply_internal_grippers(self):
+        """Un cycle des pinces internes : rampe vers la cible, consigne tenue à DEX1_LEAD de la mesure."""
+        st = self.lowstate_buffer.GetData()
+        with self.ctrl_lock:
+            targets = list(self._dex1_target)
+        step = self.DEX1_RATE * self.control_dt
+        for k, idx in enumerate(self.DEX1_IDX):
+            c = self._dex1_cmd[k] + float(np.clip(targets[k] - self._dex1_cmd[k], -step, step))
+            meas = st.motor_state[idx].q
+            c = float(np.clip(c, meas - self.DEX1_LEAD, meas + self.DEX1_LEAD))
+            self._dex1_cmd[k] = c
+            self.msg.motor_cmd[idx].q = c
+            self.msg.motor_cmd[idx].dq = 0
+            self.msg.motor_cmd[idx].tau = 0
+
+    def enable_internal_grippers(self):
+        """Pilote les Dex1 internes (moteurs 31/33) : gains Dex1, consigne de départ = position MESURÉE."""
+        q = self.get_current_motor_q()
+        with self.ctrl_lock:
+            for k, idx in enumerate(self.DEX1_IDX):
+                self._dex1_target[k] = self._dex1_cmd[k] = float(q[idx])
+                self.msg.motor_cmd[idx].mode = 1
+                self.msg.motor_cmd[idx].kp = self.DEX1_KP
+                self.msg.motor_cmd[idx].kd = self.DEX1_KD
+                self.msg.motor_cmd[idx].q = float(q[idx])
+            self.dex1_internal = True
+        logger_mp.info(f"[G1_29_ArmController] Dex1 internes : moteurs {self.DEX1_IDX}, départ "
+                       f"{q[self.DEX1_IDX[0]]:.2f} / {q[self.DEX1_IDX[1]]:.2f} rad (0 fermée -> {self.DEX1_Q_MAX} ouverte)")
+
+    def set_gripper_targets(self, left: float, right: float):
+        """Consignes des Dex1 internes, unité moteur (0 fermée -> 5.4 ouverte), bornées sous la butée."""
+        with self.ctrl_lock:
+            self._dex1_target = [float(np.clip(left, 0.0, self.DEX1_Q_MAX)),
+                                 float(np.clip(right, 0.0, self.DEX1_Q_MAX))]
+
+    def get_gripper_q(self):
+        st = self.lowstate_buffer.GetData()
+        return [float(st.motor_state[i].q) for i in self.DEX1_IDX]
+
+    def get_gripper_targets(self):
+        with self.ctrl_lock:
+            return list(self._dex1_target)
 
     def hold_torso_yaw(self):
         """Fige le buste à sa consigne courante (tenue)."""

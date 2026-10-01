@@ -9,10 +9,16 @@ sudo systemctl restart teleimager.service
 journalctl -u teleimager.service -n 15 --no-pager     # OK si : head_camera / left_wrist / right_wrist is ready
 # si aucune /dev/video* :  sudo modprobe -r uvcvideo && sudo modprobe uvcvideo   puis relancer le restart
 
-# --- Pinces (dex1 gripper server) ---
-sudo systemctl restart dex1_1_gripper.service
-journalctl -u dex1_1_gripper.service -n 10 --no-pager # OK si 2 moteurs : Side: left ET Side: right
+# --- Pinces ---
+# G1-D : Dex1 CÂBLÉES EN INTERNE (moteurs 31/33 du LowCmd) -> PAS de service à lancer.
+# dex1_1_gripper.service et rt/dex1/* ne servent qu'aux Dex1 en USB (--dex1-bus usb).
 ```
+
+**Caméras sur ce robot (1er octobre 2026)** : la tête stéréo stock est publiée par teleimager sur le port **55558**, pour cohabiter avec la RealSense d'un autre projet (`~/rs_stream.py`, ports 55555/55565, à ne pas arrêter). Les caméras de poignet ne sont pas détectées : désactivées dans `cam_config_server.yaml` (sauvegarde `.bak.20261001_174425`), à réactiver une fois rebranchées. La téléop lit la config du serveur (port 60000) et suit le port toute seule.
+
+**Buste** : la rotation est le moteur **12** (vérifié dans mpc_any, kp 180 / kd 2,6). Le **tangage n'est ni commandé ni mesuré** (indices 13/14 à 0,000) : enregistrer avec `--torso-pitch <angle mesuré>`, pas `--torso-pitch-index`. `python read_lowstate.py` lit les 35 moteurs sans rien commander.
+
+**Un seul programme sur les moteurs** : les caméras se partagent, pas `rt/lowcmd`.
 
 ## 2) PC (laptop)
 ```bash
@@ -20,7 +26,9 @@ conda activate g1d_teleop          # créé par : bash teleoperation/setup_env.s
 cd teleoperation/Tele_OP/xr_teleoperate/teleop   # depuis la racine du dépôt unifolm-wla
 
 # téléop complète (bras + pinces + caméra tête + vignettes poignets en VR)
-python teleop_hand_and_arm.py --network-interface=enx0c3796e0bc5b --img-server-ip=192.168.123.164 --input-mode=controller --ee=dex1
+python teleop_hand_and_arm.py --network-interface=enx0c3796e0bc5b --img-server-ip=192.168.123.164 \
+    --input-mode=controller --arm=G1_29 --ee=dex1 --torso-pitch 0.166
+# Dex1 internes par défaut (--dex1-bus internal) ; + --torso-yaw-index 12 pour tourner le buste au joystick droit
 ```
 
 ## 3) CASQUE VR
