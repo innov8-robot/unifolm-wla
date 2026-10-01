@@ -681,6 +681,11 @@ Scène d'empilement corrigée (`scene_g1d_stack.xml`, pièces retournées de 180
 - **[INFÉRÉ] Cause probable : sous-apprentissage.** 3000 pas × lot de 2 = 6000 exemples vus, soit environ 4 passages sur les 1 500 images du jeu Novares n10, mais 0,2 passage sur les 30 800 images du jeu d'empilement n100 (0,8 pour n25). La perte d'entraînement, bruitée, ne le montrait pas.
 - **[VÉRIFIÉ, sim] 25 démos, 12 000 pas (~3 passages) : toujours 0 / 30**, mais la boucle ouverte passe à **8,3 mm** (contre 16 mm), proche du modèle Novares (6,9 mm). En boucle fermée : 11 / 30 pièces transportées et posées sur le support (60 à 105 mm et 36 à 126° de la pose emboîtée, une à 16 mm), 17 / 30 saisies ratées, 2 pièces tombées.
 - **[INFÉRÉ]** Le modèle reproduit maintenant ses démos à peu près aussi bien que celui de Novares : ce qui reste est l'accumulation d'erreurs en boucle fermée (il sort des états vus dans les démos et ne sait pas se rattraper). Pistes : corrections dans la boucle (rollouts + opérateur simulé, type DAgger / RECAP, déjà outillé par `sim/recap_rollouts.py`), trajectoires d'expert plus simples (le transfert articulaire est la phase la plus mal reproduite), démos plus variées (bruit injecté dans l'expert).
+- **[VÉRIFIÉ, sim] Itération DAgger 1 (1er octobre)** (`sim/experiments/queue_dagger.sh`) :
+  - **Rollouts** : 100 épisodes de la politique n25_12k ; 0 réussite seule, 98 reprises par l'expert (pièce poussée, saisie ratée ou pas de réussite au pas 330), dont **11 seulement réussies** : l'expert rattrape mal les états déviés.
+  - **Fine-tuning** : depuis n25_12k, 4000 pas sur 25 démos + 11 corrections.
+  - **Résultat : 0 / 30**, boucle ouverte 7,3 mm. En boucle fermée, plutôt moins bien : 6 / 30 pièces posées sur le support (une à 32 mm), 19 saisies ratées, 5 pièces tombées.
+- **[INFÉRÉ] Le goulot est l'expert** : il ne réussit que 30 % depuis le départ et 11 % depuis un état dévié. Il produit donc peu de corrections, et des démos triées sur des placements faciles. Avant d'autres itérations, il faut le fiabiliser (portée du bras droit, pièce qui glisse dans la pince, reprise depuis un état quelconque).
 
 **[INFÉRÉ]** L'emboîtement en sim repose aussi sur la décomposition convexe de la pièce en 90 morceaux. Il peut différer de l'emboîtement réel.
 
