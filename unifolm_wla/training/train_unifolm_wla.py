@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 import time
 from pathlib import Path
 from typing import Tuple
@@ -374,11 +375,29 @@ class VLATrainer(TrainerUtils):
 
             if self.completed_steps % self.config.trainer.save_interval == 0 and self.completed_steps > 0:
                 self._save_checkpoint()
+                self._prune_checkpoints()
+
+            # arrêt PROPRE à la demande (G1-D) : créer <output_dir>/STOP -> sauvegarde reprenable
+            # (checkpoints/steps_N_*), puis sortie sans écrire final_model ; reprise : trainer.is_resume=true
+            if os.path.exists(os.path.join(self.config.output_dir, "STOP")):
+                self.accelerator.print(f"⏹ fichier STOP trouvé : sauvegarde au pas {self.completed_steps} puis arrêt")
+                self._save_checkpoint()
+                self._prune_checkpoints()
+                if self.accelerator.is_main_process:
+                    os.remove(os.path.join(self.config.output_dir, "STOP"))
+                    wandb.finish()
+                self.accelerator.wait_for_everyone()
+                return
 
             if self.completed_steps >= self.config.trainer.max_train_steps:
                 break
 
         self._finalize_training()
+        # modèle final écrit : les sauvegardes intermédiaires ne servent plus (disque : 12,5 Go chacune)
+        if getattr(self.config.trainer, "keep_last_checkpoints", 0) and self.accelerator.is_main_process:
+            for f in os.listdir(self.checkpoint_dir):
+                if f.startswith("steps_"):
+                    os.remove(os.path.join(self.checkpoint_dir, f))
 
     def eval_action_model(self, step_metrics: dict = None) -> float:
         """Run simple action-eval on current batch and attach score to metrics."""
@@ -443,6 +462,20 @@ class VLATrainer(TrainerUtils):
                 if k in output_dict
             },
         }
+
+    def _prune_checkpoints(self):
+        """Ne garde que les ``trainer.keep_last_checkpoints`` dernières sauvegardes (0 = toutes)."""
+        keep = int(getattr(self.config.trainer, "keep_last_checkpoints", 0) or 0)
+        if keep <= 0 or not self.accelerator.is_main_process or not os.path.isdir(self.checkpoint_dir):
+            return
+        steps = {}
+        for f in os.listdir(self.checkpoint_dir):
+            m = re.match(r"steps_(\d+)_", f)
+            if m:
+                steps.setdefault(int(m.group(1)), []).append(f)
+        for s in sorted(steps)[:-keep]:
+            for f in steps[s]:
+                os.remove(os.path.join(self.checkpoint_dir, f))
 
     def _finalize_training(self):
         """Training end processing."""
