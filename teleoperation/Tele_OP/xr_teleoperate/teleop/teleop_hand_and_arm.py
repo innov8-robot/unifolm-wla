@@ -70,6 +70,8 @@ def compose_xr_image(head_bgr, left_wrist_bgr=None, right_wrist_bgr=None, binocu
 # state transition
 TORSO_STICK_DEADZONE = 0.2  # joystick droit : zone morte de la rotation du buste
 CAL_POSE_Q = np.zeros(14)    # posture de calibration (Y) : position zéro du G1 = coudes ~80°, avant-bras vers l'avant
+BASE_STICK_DEADZONE = 0.15  # joystick gauche : zone morte de la base
+BASE_STALE_S = 0.3          # manette gauche figée depuis plus longtemps : base arrêtée
 CAL_MOVE_S = 2.5             # durée du trajet vers la posture de calibration (s)
 START          = False  # Enable to start robot following VR user motion
 STOP           = False  # Enable to begin system exit procedure
@@ -154,6 +156,10 @@ if __name__ == '__main__':
                              "off = aucun. Moins de lissage = moins de latence, plus de tremblement")
     parser.add_argument('--record-fps', type=float, default=30.0,
                         help="fréquence d'ENREGISTREMENT (WLA : 30). Avec --frequency plus haut, un pas sur N est gardé")
+    parser.add_argument('--base', action='store_true',
+                        help="G1-D : joystick GAUCHE = base roulante (haut/bas = avancer/reculer, gauche/droite = tourner)")
+    parser.add_argument('--base-max-vx', type=float, default=0.3, help='vitesse linéaire max de la base (m/s, ≤ 1.0)')
+    parser.add_argument('--base-max-vyaw', type=float, default=0.4, help='vitesse de rotation max de la base (rad/s, ≤ 0.6)')
     parser.add_argument('--timing', action='store_true',
                         help="journal toutes les 2 s : fréquence de boucle, temps d'IK, retard des bras sur la consigne")
     parser.add_argument('--dex1-bus', choices=['internal', 'usb'], default='internal',
@@ -171,6 +177,8 @@ if __name__ == '__main__':
         parser.error("--policy-uri demande --arm G1_29 --ee dex1 --input-mode controller, sans --motion")
     if args.ee == "dex1" and args.dex1_bus == "internal" and not args.sim and args.arm != "G1_29":
         parser.error("--dex1-bus internal demande --arm G1_29 (commande dans le LowCmd des bras)")
+    if args.base and (args.motion or args.policy_uri or args.input_mode != "controller"):
+        parser.error("--base demande --input-mode controller, sans --motion ni --policy-uri")
     if args.policy_uri and abs(args.frequency - 30.0) > 1e-6:
         parser.error("--policy-uri : les chunks du modèle sont à 30 Hz, garder --frequency 30")
     RECORD_STRIDE = max(1, int(round(args.frequency / args.record_fps)))
@@ -275,6 +283,11 @@ if __name__ == '__main__':
             arm_ik = H1_ArmIK()
             arm_ctrl = H1_ArmController(simulation_mode=args.sim)
 
+        base = None
+        if args.base:
+            from teleop.robot_control.g1d_base import G1DBase
+            base = G1DBase(args.base_max_vx, args.base_max_vyaw)
+
         # end-effector
         if args.ee == "dex3":
             from teleop.robot_control.robot_hand_unitree import Dex3_1_Controller
@@ -363,6 +376,7 @@ if __name__ == '__main__':
         cal = {"paused": False, "t0": 0.0, "q0": np.zeros(14),
                "offset": {"left": np.zeros(3), "right": np.zeros(3)}}
         prev_cY = False
+        base_last = {"pose": None, "t": 0.0}
         loop_count = -1
         timing_acc = {"n": 0, "ik": 0.0, "lag": 0.0, "dpos": 0.0, "prev_t": None, "t0": time.time()}
         episode_steps = 0
@@ -616,6 +630,21 @@ if __name__ == '__main__':
                     left_target, right_target = hold_ik["left"], hold_ik["right"]
                     policy_intervention = False
                     policy_paused = True
+            # base roulante (G1-D) : joystick GAUCHE. Consigne nulle si la manette gauche ne bouge plus
+            # depuis BASE_STALE_S (casque déconnecté : la dernière valeur du joystick resterait figée)
+            base_cmd = (0.0, 0.0)
+            if base is not None:
+                pose_l = np.asarray(tele_data.left_wrist_pose)
+                if base_last["pose"] is None or not np.array_equal(pose_l, base_last["pose"]):
+                    base_last.update(pose=pose_l.copy(), t=time.time())
+                fresh = time.time() - base_last["t"] < BASE_STALE_S
+                lx, ly = (float(v) for v in tele_data.left_ctrl_thumbstickValue[:2])
+                dz = lambda v: 0.0 if abs(v) < BASE_STICK_DEADZONE else v
+                if START and fresh and not cal["paused"]:
+                    base_cmd = base.set(-dz(ly) * args.base_max_vx, -dz(lx) * args.base_max_vyaw)
+                else:
+                    base_cmd = base.set(0.0, 0.0)
+
             # rotation du buste (G1-D) : joystick droit gauche/droite. Les cibles IK sont dans un repère lié
             # au torse : tourner le buste emporte les bras (comme quand l'opérateur pivote sur lui-même).
             if args.torso_yaw_index is not None and START:
@@ -693,10 +722,14 @@ if __name__ == '__main__':
                         current_body_state = arm_ctrl.get_current_motor_q().tolist()
                         # commande de base : seulement si ce programme la pilote (--motion). Sinon la base
                         # ne bouge pas et le joystick droit sert au buste : enregistrer 0 (base à l'arrêt)
-                        current_body_action = ([-tele_data.left_ctrl_thumbstickValue[1]  * 0.3,
-                                                -tele_data.left_ctrl_thumbstickValue[0]  * 0.3,
-                                                -tele_data.right_ctrl_thumbstickValue[0] * 0.3]
-                                               if args.motion else [0.0, 0.0, 0.0])
+                        if args.motion:
+                            current_body_action = [-tele_data.left_ctrl_thumbstickValue[1]  * 0.3,
+                                                   -tele_data.left_ctrl_thumbstickValue[0]  * 0.3,
+                                                   -tele_data.right_ctrl_thumbstickValue[0] * 0.3]
+                        elif base is not None:   # G1-D : [vx, vy=0, vyaw] réellement commandés à la base
+                            current_body_action = [base_cmd[0], 0.0, base_cmd[1]]
+                        else:
+                            current_body_action = [0.0, 0.0, 0.0]
                 elif (args.ee == "inspire_dfx" or args.ee == "inspire_ftp" or args.ee == "brainco") and args.input_mode == "hand":
                     with dual_hand_data_lock:
                         left_ee_state = dual_hand_state_array[:6]
@@ -833,6 +866,13 @@ if __name__ == '__main__':
         import traceback
         logger_mp.error(traceback.format_exc())
     finally:
+        try:
+            if base is not None:
+                base.stop()                            # vitesses nulles : la base roule ~1,5 s sinon
+        except NameError:
+            pass
+        except Exception as e:
+            logger_mp.error(f"arrêt de la base : {e}")
         try:
             if getattr(arm_ctrl, "torso_yaw_index", None) is not None:
                 arm_ctrl.set_torso_yaw(0.0)            # buste ramené droit, vitesse bornée

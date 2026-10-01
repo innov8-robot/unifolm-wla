@@ -223,6 +223,9 @@ Mesuré hors robot (moteurs supposés parfaits) : délai pour suivre 90 % d'un d
 | **Y** gauche | **Pause + recalage** : le suivi s'arrête, les bras vont doucement (2,5 s) en posture de calibration — position zéro du G1, bras le long du corps, avant-bras vers l'avant, coudes ~80°. Prenez la même posture, puis **Y** à nouveau : la pose actuelle des manettes devient celle des mains du robot (recalage en position, pas de saut). Pinces figées et pas non enregistrés pendant la pause. Hors mode politique (Y = essai raté) |
 | Gâchettes | Pinces |
 | Joystick droit ←/→ | Rotation du buste (`--torso-yaw-index 12`) |
+| Joystick **gauche** | **Base roulante** (`--base`) : ↑/↓ avancer/reculer, ←/→ tourner. Bornes `--base-max-vx 0.3` m/s, `--base-max-vyaw 0.4` rad/s (châssis : 1,0 / 0,6). Arrêt si la manette gauche ne bouge plus depuis 0,3 s (casque déconnecté), pendant la pause Y, et à la sortie (zéros répétés : la base roule ~1,5 s sinon). Enregistré dans `action.base_command` |
 | `q` (clavier) | Quitter (buste ramené droit, bras rentrés lentement) |
 
 Le recalage porte sur la position des mains ; l'orientation reste celle des manettes : tenir les manettes « avant-bras vers l'avant » à la reprise.
+
+**Base roulante (`--base`)** : service RPC « agv » du robot (api 1001, `Move(vx, vy, vyaw)`, vy ignoré), repris de mpc_any. Ce service contourne les limiteurs du châssis : les bornes sont dans `robot_control/g1d_base.py`. Pour les démos WLA, placer le robot AVANT d'appuyer sur A : les données d'entraînement d'Unitree sont à base immobile pour les tâches de table. Incompatible avec `--motion` et `--policy-uri`.
