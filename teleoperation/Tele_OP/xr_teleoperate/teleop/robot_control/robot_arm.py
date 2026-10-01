@@ -86,6 +86,8 @@ class G1_29_ArmController:
         self._torso_yaw_cmd = 0.0
         self._torso_yaw_max = 0.6
         self._torso_yaw_rate = 0.5
+        self.TORSO_YAW_KP = 180.0      # gains du buste (G1-D, moteur waist_yaw), mesurés dans mpc_any
+        self.TORSO_YAW_KD = 2.6
         self.TORSO_YAW_LEAD = 0.15     # écart max consigne / mesure (rad) : un buste bloqué ne force pas
 
         if self.motion_mode:
@@ -225,6 +227,11 @@ class G1_29_ArmController:
         with self.ctrl_lock:
             self._torso_yaw_max, self._torso_yaw_rate = float(max_abs), float(rate)
             self._torso_yaw_target = self._torso_yaw_cmd = q0
+            # gains mesurés sur ce G1-D (mpc_any, 21/09) : kp 60 laissait le buste dévier de ~2° sous
+            # deux bras ; le verrouillage amont (kp 300) est remplacé
+            self.msg.motor_cmd[int(index)].kp = self.TORSO_YAW_KP
+            self.msg.motor_cmd[int(index)].kd = self.TORSO_YAW_KD
+            self.msg.motor_cmd[int(index)].q = q0
             self.torso_yaw_index = int(index)
         logger_mp.info(f"[G1_29_ArmController] rotation du buste pilotée : moteur {index}, départ {q0:.3f} rad, "
                        f"±{max_abs} rad, {rate} rad/s")
