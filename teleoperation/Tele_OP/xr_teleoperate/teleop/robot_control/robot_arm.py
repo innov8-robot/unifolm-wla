@@ -126,6 +126,8 @@ class G1_29_ArmController:
         self.msg.mode_machine = self.get_mode_machine()
 
         self.all_motor_q = self.get_current_motor_q()
+        # G1-D : les bras TIENNENT leur pose mesurée jusqu'au démarrage, au lieu de partir vers q = 0
+        self.q_target = self.get_current_dual_arm_q().copy()
         logger_mp.debug(f"Current all body motor state q:\n{self.all_motor_q} \n")
         logger_mp.debug(f"Current two arms motor state q:\n{self.get_current_dual_arm_q()}\n")
         logger_mp.info("Lock all joints except two arms...")
