@@ -145,6 +145,8 @@ if __name__ == '__main__':
     parser.add_argument('--policy-max-speed', type=float, default=0.10, help='vitesse max des cibles (m/s) ; commencer bas')
     parser.add_argument('--torso-pitch-index', type=int, default=13, help='indice du tangage du buste dans les 35 moteurs (HYPOTHÈSE)')
     parser.add_argument('--torso-pitch', type=float, default=None, help='tangage du buste constant (rad), remplace --torso-pitch-index')
+    parser.add_argument('--timing', action='store_true',
+                        help="journal toutes les 2 s : fréquence de boucle, temps d'IK, retard des bras sur la consigne")
     parser.add_argument('--dex1-bus', choices=['internal', 'usb'], default='internal',
                         help="Dex1 : 'internal' = câblées par les poignets, moteurs 31/33 du LowCmd (G1-D) ; "
                              "'usb' = service dex1_1_gripper et topics rt/dex1/* (amont)")
@@ -341,6 +343,7 @@ if __name__ == '__main__':
         hold_ik = None                 # cibles figées quand la politique ne pilote pas
         torso_yaw_offset = 0.0         # mode politique : correction de rotation du buste par l'opérateur
         last_noimg_log = 0.0
+        timing_acc = {"n": 0, "ik": 0.0, "lag": 0.0, "dpos": 0.0, "prev_t": None, "t0": time.time()}
         episode_steps = 0
         head_img = left_wrist_img = right_wrist_img = None      # caméra désactivée : reste None
         prev_lX = prev_lY = False
@@ -583,6 +586,18 @@ if __name__ == '__main__':
                     arm_ctrl.hold_torso_yaw()
             sol_q, sol_tauff  = arm_ik.solve_ik(left_target, right_target, current_lr_arm_q, current_lr_arm_dq)
             time_ik_end = time.time()
+            if args.timing:
+                tm = timing_acc
+                tm["n"] += 1
+                tm["ik"] += time_ik_end - time_ik_start
+                tm["lag"] = max(tm["lag"], float(np.max(np.abs(np.asarray(sol_q) - np.asarray(current_lr_arm_q)))))
+                tm["dpos"] = max(tm["dpos"], float(np.linalg.norm(np.asarray(right_target)[:3, 3] - tm["prev_t"]))) if tm["prev_t"] is not None else 0.0
+                tm["prev_t"] = np.asarray(right_target)[:3, 3].copy()
+                if time.time() - tm["t0"] > 2.0:
+                    dt = time.time() - tm["t0"]
+                    logger_mp.info(f"[timing] boucle {tm['n']/dt:.1f} Hz | IK {1000*tm['ik']/max(tm['n'],1):.1f} ms | "
+                                   f"écart max consigne-mesure bras {tm['lag']:.3f} rad | saut max cible main D {1000*tm['dpos']:.0f} mm/pas")
+                    timing_acc.update(n=0, ik=0.0, lag=0.0, dpos=0.0, t0=time.time())
             logger_mp.debug(f"ik:\t{round(time_ik_end - time_ik_start, 6)}")
             # --right-only: hold the left arm at its captured pose (position-held, no feedforward)
             if args.right_only and frozen_left_arm_q is not None:
