@@ -32,14 +32,19 @@ from g1d_wla.frames import G1_STANDING_LEGS  # noqa: E402
 from tools import msgpack_numpy  # noqa: E402
 from wla_client import ee_to_xyz_rot6d, xyz_rpy_to_matrix  # noqa: E402
 
-#: JPEG bruts (disposition monoculaire de la sim) -> clés d'image attendues par le serveur
-RAW_TO_OBS = {"color_0": "observation.images.cam_left_high",
-              "color_1": "observation.images.cam_left_wrist",
-              "color_2": "observation.images.cam_right_wrist"}
+#: JPEG bruts -> clés d'image attendues par le serveur, selon la disposition (3 images : sim ;
+#: 4 images : robot réel, tête stéréo gauche/droite puis poignets ; seul l'œil GAUCHE va au modèle)
+RAW_TO_OBS = {3: {"color_0": "observation.images.cam_left_high",
+                  "color_1": "observation.images.cam_left_wrist",
+                  "color_2": "observation.images.cam_right_wrist"},
+              4: {"color_0": "observation.images.cam_left_high",
+                  "color_2": "observation.images.cam_left_wrist",
+                  "color_3": "observation.images.cam_right_wrist"}}
 
 
 def build_obs(row, ep_raw: Path, item: dict, instruction: str, unnorm_key: str, lower_body) -> dict:
-    obs = {RAW_TO_OBS[k]: cv2.imread(str(ep_raw / p)) for k, p in item["colors"].items()}  # BGR, comme le robot
+    mapping = RAW_TO_OBS[len(item["colors"])]
+    obs = {mapping[k]: cv2.imread(str(ep_raw / p)) for k, p in item["colors"].items() if k in mapping}  # BGR
     for s in SIDES:
         T = xyz_rpy_to_matrix(np.asarray(row[f"observation.state.{s}_ee_pose_gripper_base"], float))
         obs[f"observation.state.{s}_ee_6d"] = ee_to_xyz_rot6d(T)
@@ -56,11 +61,13 @@ async def main_async(a) -> None:
     legs = np.concatenate([G1_STANDING_LEGS["left"], G1_STANDING_LEGS["right"]]).astype(np.float32)
     packer = msgpack_numpy.Packer()
     rows_out = []
+    raw_dirs = sorted(p for p in Path(a.raw).glob("episode_*") if (p / "data.json").exists())
     async with websockets.connect(a.uri, max_size=None, ping_interval=None) as ws:
         await ws.recv()
         for e in a.episodes:
             ep = df[df.episode_index == e].sort_values("frame_index").reset_index(drop=True)
-            ep_raw = Path(a.raw) / f"episode_{e:04d}"
+            # épisode e du dataset = e-ième dossier brut TRIÉ (les enregistrements réels commencent à 0001)
+            ep_raw = raw_dirs[e]
             items = json.loads((ep_raw / "data.json").read_text())["data"]
             assert len(items) == len(ep), f"épisode {e} : {len(items)} JPEG pour {len(ep)} lignes"
             act = np.stack(ep[f"action.{a.side}_ee_pose_gripper_base"].to_numpy())
