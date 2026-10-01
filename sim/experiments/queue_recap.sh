@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Expérience RECAP en sim (tâche Novares, zone décalée = « cuisine inversée ») — une itération complète.
-#   setsid nohup bash playground/queue_recap.sh > playground/queue_logs/recap.log 2>&1 &
+#   setsid nohup bash sim/experiments/queue_recap.sh > playground/queue_logs/recap.log 2>&1 &
 #
 #  0. démos : 10 démos Novares ré-enregistrées (même graine que le jeu n10 -> mêmes épisodes) avec
 #     le pas de réussite, pour le modèle de valeur ;
@@ -30,12 +30,21 @@ machine_free() {
     [[ -e "$BUSY" ]] && return 1
     local pid
     for pid in $(pgrep -f "train_unifolm_wla.py|action_server_wbc_msgpack_unitree|queue_novares.sh"); do
-        [[ "$(ps -o comm= -p "$pid" 2>/dev/null)" == python* || "$(ps -o args= -p "$pid")" == "bash playground/queue_novares.sh" ]] && return 1
+        [[ "$(ps -o comm= -p "$pid" 2>/dev/null)" == python* || "$(ps -o args= -p "$pid")" == "bash sim/experiments/queue_novares.sh" ]] && return 1
     done
     local gpu ram
     gpu=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)
     ram=$(free -g | awk '/^Mem:/ {print $7}')
+    [[ $gpu =~ ^[0-9]+$ && $ram =~ ^[0-9]+$ ]] || return 1     # nvidia-smi absent ou illisible : pas libre
     (( gpu < 2000 && ram >= 18 ))
+}
+OWN=0
+acquire() {  # verrou ATOMIQUE (noclobber) : deux files qui voient la machine libre ne démarrent pas ensemble
+    while :; do
+        wait_free
+        if ( set -o noclobber; echo "$$ $(basename "$0")" > "$BUSY" ) 2>/dev/null; then OWN=1; return; fi
+        say "verrou pris par une autre file, nouvelle attente"
+    done
 }
 wait_free() {
     say "attente d'une machine libre"
@@ -81,12 +90,11 @@ train() {  # train <run_id> <config>
         --trainer.save_interval 1000000 --trainer.eval_interval 1000000 --trainer.logging_frequency 50 \
         > "$LOGS/recap_train_$run.log" 2>&1 || { say "ÉCHEC entraînement $run"; exit 1; }
 }
-cleanup() { unserve; rm -f "$BUSY"; }
+cleanup() { unserve; [[ $OWN == 1 ]] && rm -f "$BUSY"; }
 trap cleanup EXIT
 
 say "expérience RECAP (Novares, zone décalée)"
-wait_free
-touch "$BUSY"
+acquire     # attend une machine libre puis prend le verrou (atomique)
 [[ -f "$BASE_CKPT" ]] || { say "ARRÊT : checkpoint n10 absent ($BASE_CKPT)"; exit 1; }
 
 say "0. démos avec pas de réussite"

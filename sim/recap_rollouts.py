@@ -97,8 +97,8 @@ async def run_episode(ws, packer, sim: G1DSim, task, rng, args, w: SimEpisodeWri
                 closure[s] = dex1_to_closure(grip[s][k])
                 sim.set_gripper(s, closure[s])
             w.record(t, closure, {"intervention": 0})
+            check(t)                      # état du pas enregistré t, comme l'enregistreur et la phase opérateur
             sim.step()
-            check(t)
             t += 1
             moved = float(np.linalg.norm(sim.object_pose(task.body)[:2, 3] - xy0))
             if success_step is None and moved > args.knock_cm / 100 and lifted() < 0.02:
@@ -109,6 +109,8 @@ async def run_episode(ws, packer, sim: G1DSim, task, rng, args, w: SimEpisodeWri
                 break
             if done() or t >= args.max_steps:
                 break
+            if success_step is None and t >= args.takeover_step:
+                break                     # reprise au pas voulu, pas seulement en fin de chunk (audit du 1/10)
         prev_exec = n
         if knocked or (success_step is None and t >= args.takeover_step):
             break
@@ -122,10 +124,8 @@ async def run_episode(ws, packer, sim: G1DSim, task, rng, args, w: SimEpisodeWri
             w.record(t0 + k, closure_cmd, {"intervention": 1})
             check(t0 + k)
 
-        z0_before = z0
         res = task.expert(sim, rng, on_step=on_step)
         t = t0 + int(res.get("steps", 0))
-        z0 = z0_before
 
     # 3. issue jugée à la fin : l'objet doit être encore soulevé (une prise qui lâche = échec)
     outcome = "success" if success_step is not None and accomplished() else "failure"

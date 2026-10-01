@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # File de travaux Novares (sim) : 50, 25 puis 10 démos -> fine-tuning -> évaluation.
 # Démarre seule quand la machine est libre ; lancer avec :
-#   setsid nohup bash playground/queue_novares.sh > playground/queue_logs/queue.log 2>&1 &
+#   setsid nohup bash sim/experiments/queue_novares.sh > playground/queue_logs/queue.log 2>&1 &
 #
 # Garde-fous (machine partagée avec une autre session Claude) :
 #   - attend, 120 s d'affilée : aucun entraînement ni serveur WLA, GPU < 2 Go utilisés, >= 18 Go
@@ -30,9 +30,18 @@ machine_free() {
     local gpu ram
     gpu=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)
     ram=$(free -g | awk '/^Mem:/ {print $7}')
+    [[ $gpu =~ ^[0-9]+$ && $ram =~ ^[0-9]+$ ]] || return 1     # nvidia-smi absent ou illisible : pas libre
     (( gpu < 2000 && ram >= 18 ))
 }
 
+OWN=0
+acquire() {  # verrou ATOMIQUE (noclobber) : deux files qui voient la machine libre ne démarrent pas ensemble
+    while :; do
+        wait_free
+        if ( set -o noclobber; echo "$$ $(basename "$0")" > "$BUSY" ) 2>/dev/null; then OWN=1; return; fi
+        say "verrou pris par une autre file, nouvelle attente"
+    done
+}
 wait_free() {
     say "attente d'une machine libre"
     local ok=0
@@ -43,7 +52,8 @@ wait_free() {
     say "machine libre"
 }
 
-cleanup() { rm -f "$BUSY"; }
+SRV=""
+cleanup() { [[ -n "$SRV" ]] && kill $SRV 2>/dev/null; [[ $OWN == 1 ]] && rm -f "$BUSY"; }
 trap cleanup EXIT
 
 subset() {  # subset <n> : dataset des n premières démos (conversion gourmande en RAM : machine libre)
@@ -75,7 +85,8 @@ train_eval() {  # train_eval <tag> <config>
     say "évaluation $run"
     env -i HOME="$HOME" PATH=/usr/bin:/bin LANG=C.UTF-8 .venv/bin/python -m model_server.action_server_wbc_msgpack_unitree \
         --ckpt_path "$ckpt" --unnorm_key UnifoLM_G1_Dex1 --port 8600 > "$LOGS/server_$tag.log" 2>&1 &
-    local srv=$!
+    SRV=$!
+    local srv=$SRV
     until grep -q "server listening on" "$LOGS/server_$tag.log"; do
         kill -0 $srv 2>/dev/null || { say "ÉCHEC serveur $run"; return 1; }
         sleep 5
@@ -89,13 +100,13 @@ train_eval() {  # train_eval <tag> <config>
             | sed "s|^|    [$tag, exec $1, préfixe $2] |"
     done
     kill $srv
+    SRV=""
     wait $srv 2>/dev/null
     say "fini $run"
 }
 
 say "file Novares : n50, n25, n10"
-wait_free
-touch "$BUSY"
+acquire     # attend une machine libre puis prend le verrou (atomique)
 subset 25
 subset 10
 train_eval n50 g1d_sim_novares.yaml

@@ -198,7 +198,7 @@ async def run(args) -> dict:
         t_ok = [ep["steps_to_success"] for ep in log["episodes"] if ep["success"]]
         log["median_steps_to_success"] = float(np.median(t_ok)) if t_ok else None
         med = f"{np.median(t_ok):.0f}" if t_ok else "-"
-        print(f"réussite {n_ok}/{len(log['episodes'])} | pas médian jusqu'à la réussite {med} (expert : ~130)")
+        print(f"réussite {n_ok}/{len(log['episodes'])} | pas médian jusqu'à la réussite {med}")
     (out / "log.json").write_text(json.dumps(log, indent=1))
     sim.close()
     return log

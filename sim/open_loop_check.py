@@ -27,7 +27,8 @@ import pandas as pd
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "model_server"))
-from g1d_sim import SIDES, G1DSim  # noqa: E402
+from g1d_sim import SIDES  # noqa: E402
+from g1d_wla.frames import G1_STANDING_LEGS  # noqa: E402
 from tools import msgpack_numpy  # noqa: E402
 from wla_client import ee_to_xyz_rot6d, xyz_rpy_to_matrix  # noqa: E402
 
@@ -52,7 +53,7 @@ def build_obs(row, ep_raw: Path, item: dict, instruction: str, unnorm_key: str, 
 async def main_async(a) -> None:
     import websockets
     df = pd.concat([pd.read_parquet(f) for f in sorted(glob.glob(f"{a.dataset}/data/*/*.parquet"))])
-    lower_body = G1DSim().lower_body_wla().astype(np.float32)
+    legs = np.concatenate([G1_STANDING_LEGS["left"], G1_STANDING_LEGS["right"]]).astype(np.float32)
     packer = msgpack_numpy.Packer()
     rows_out = []
     async with websockets.connect(a.uri, max_size=None, ping_interval=None) as ws:
@@ -67,7 +68,10 @@ async def main_async(a) -> None:
             for t in range(0, len(ep) - 30, a.every):
                 await ws.send(packer.pack({"type": "policy_reset"}))
                 await ws.recv()
-                obs = build_obs(ep.iloc[t], ep_raw, items[t], a.instruction, a.unnorm_key, lower_body)
+                # taille ENREGISTRÉE (tangage, lacet) : une sim neuve sans go_ready donnait [0, 0, 0] (audit du 1/10)
+                waist = np.asarray(ep.iloc[t]["observation.state.waist_state_joint"], np.float32)
+                obs = build_obs(ep.iloc[t], ep_raw, items[t], a.instruction, a.unnorm_key,
+                                np.concatenate([legs, waist]))
                 await ws.send(packer.pack({"type": "get_action", "obs": obs}))
                 raw = await ws.recv()
                 if isinstance(raw, str):

@@ -135,6 +135,8 @@ class G1DSim:
         mujoco.mj_resetData(self.m, self.d)
         for name, q in LOCKED_JOINTS.items():
             self.d.ctrl[self.m.actuator(name).id] = q
+        mujoco.mj_forward(self.m, self.d)
+        self._refresh_kinematics()        # FK/IK du repos : buste de CET épisode, pas du précédent
         for s in SIDES:
             # le robot APPARAÎT déjà en tuck (la transition qpos0 -> tuck fauche la table)
             self.d.qpos[self._arm_qadr[s]] = TUCK_Q

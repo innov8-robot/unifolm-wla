@@ -32,7 +32,16 @@ machine_free() {
     local gpu ram
     gpu=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)
     ram=$(free -g | awk '/^Mem:/ {print $7}')
+    [[ $gpu =~ ^[0-9]+$ && $ram =~ ^[0-9]+$ ]] || return 1     # nvidia-smi absent ou illisible : pas libre
     (( gpu < 2000 && ram >= 18 ))
+}
+OWN=0
+acquire() {  # verrou ATOMIQUE (noclobber) : deux files qui voient la machine libre ne démarrent pas ensemble
+    while :; do
+        wait_free
+        if ( set -o noclobber; echo "$$ $(basename "$0")" > "$BUSY" ) 2>/dev/null; then OWN=1; return; fi
+        say "verrou pris par une autre file, nouvelle attente"
+    done
 }
 wait_free() {
     say "attente d'une machine libre"
@@ -54,12 +63,11 @@ serve() {  # serve <ckpt> <tag>
     done
 }
 unserve() { [[ -n "$SRV" ]] && kill $SRV && wait $SRV 2>/dev/null; SRV=""; }
-cleanup() { unserve; rm -f "$BUSY"; }
+cleanup() { unserve; [[ $OWN == 1 ]] && rm -f "$BUSY"; }
 trap cleanup EXIT
 
 say "itération DAgger 1 (empilement)"
-wait_free
-touch "$BUSY"
+acquire     # attend une machine libre puis prend le verrou (atomique)
 
 say "1. rollouts de $POLICY avec opérateur simulé"
 serve playground/Checkpoints/$POLICY/final_model/model.safetensors policy
@@ -71,7 +79,8 @@ unserve
 
 say "2. corrections"
 $SIMPY sim/dagger_corrections.py --rollouts $ROLL --out ${ROLL}_corr --overwrite | sed 's|^|    |'
-cp $ROLL/summary.json ${ROLL}_corr/rollouts_summary.json
+(( PIPESTATUS[0] == 0 )) || { say "ÉCHEC découpage des corrections (rollouts conservés)"; exit 1; }
+cp $ROLL/summary.json ${ROLL}_corr/rollouts_summary.json || { say "ÉCHEC copie du résumé"; exit 1; }
 rm -rf $ROLL      # les corrections sont des liens durs : seuls les épisodes ratés libèrent de la place
 
 say "3. conversion et fine-tuning depuis $POLICY"
@@ -92,7 +101,7 @@ run_id=$RUN bash examples/unifolm_wla/train_files/run_finetune_g1d.sh \
     --trainer.save_interval 1000000 --trainer.eval_interval 1000000 --trainer.logging_frequency 50 \
     --trainer.pretrained_checkpoint playground/Checkpoints/$POLICY/final_model/model.safetensors \
     > "$LOGS/dagger_train.log" 2>&1 || { say "ÉCHEC entraînement"; exit 1; }
-grep -m1 "Loaded pretrained checkpoint" "$LOGS/dagger_train.log" | sed 's|.*Loaded|    Loaded|'
+grep -m1 "loading checkpoint:" "$LOGS/dagger_train.log" | sed 's|.*loading|    loading|'
 
 say "4. évaluation"
 serve playground/Checkpoints/$RUN/final_model/model.safetensors eval

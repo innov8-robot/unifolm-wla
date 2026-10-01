@@ -36,31 +36,48 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from .frames import DEX1_OPEN
+
 log = logging.getLogger("g1d_wla.recap")
 IMG_HW = (224, 224)
 
 
 # ------------------------------------------------------------------ épisodes
+
+#: pas restants prédits sous lesquels la tâche est considérée finie (étiquette positive)
+DONE_STEPS = 5
+
 def episode_dirs(roots) -> list[Path]:
     out = []
     for r in roots:
         r = Path(r)
         if (r / "data.json").exists():
-            out.append(r)
+            out.append(r.resolve())
         else:
-            out.extend(sorted(p for p in r.glob("episode_*") if (p / "data.json").exists()))
-    return out
+            out.extend(sorted(p.resolve() for p in r.glob("episode_*") if (p / "data.json").exists()))
+    return out      # chemins ABSOLUS : clé stable du pli de chaque épisode (audit du 1/10)
 
 
 def load(ep: Path) -> dict:
     return json.loads((ep / "data.json").read_text())
 
 
-def state_vector(step: dict) -> np.ndarray:
+def torso_pitch_reader(doc: dict):
+    """Lecture du tangage du buste d'un épisode : ``info.body_layout`` (constante ou indice), sinon 13."""
+    lay = doc.get("info", {}).get("body_layout", {}) or {}
+    if lay.get("torso_pitch_const") is not None:
+        c = float(lay["torso_pitch_const"])
+        return lambda body: c
+    idx = lay.get("torso_pitch") if lay.get("torso_pitch") is not None else 13
+    return lambda body: float(body[idx]) if len(body) > idx else 0.0
+
+
+def state_vector(step: dict, pitch=lambda body: float(body[13])) -> np.ndarray:
     st = step["states"]
     body = st.get("body", {}).get("qpos") or [0.0] * 35
     return np.asarray(st["left_arm"]["qpos"] + st["right_arm"]["qpos"]
-                      + [st["left_ee"]["qpos"][0] / 5.4, st["right_ee"]["qpos"][0] / 5.4, body[13]], np.float32)
+                      + [st["left_ee"]["qpos"][0] / DEX1_OPEN, st["right_ee"]["qpos"][0] / DEX1_OPEN, pitch(body)],
+                      np.float32)
 
 
 def episode_outcome(doc: dict, is_demo: bool = False) -> tuple[str, int | None]:
@@ -152,7 +169,7 @@ def build_dataset(eps: list[Path], enc: Encoder, horizon: int, demo_set: set):
             log.warning("%s : issue inconnue (pas de X/Y en fin d'essai ?) -> ignoré", ep)
             continue
         F.append(episode_features(ep, doc, enc))
-        S.append(np.stack([state_vector(st) for st in doc["data"]]))
+        S.append(np.stack([state_vector(st, torso_pitch_reader(doc)) for st in doc["data"]]))
         Y.append(y)
         E.append(np.full(len(doc["data"]), len(kept)))
         kept.append(ep)
@@ -247,10 +264,15 @@ def cmd_label(a) -> None:
         doc = load(ep)
         n = len(doc["data"])
         f = torch.from_numpy(episode_features(ep, doc, enc)).to(a.device)
-        s = np.stack([state_vector(st) for st in doc["data"]])
+        s = np.stack([state_vector(st, torso_pitch_reader(doc)) for st in doc["data"]])
         s = torch.from_numpy((s - ck["s_mean"]) / ck["s_std"]).float().to(a.device)
         # modèle du pli qui n'a PAS vu cet épisode ; épisode nouveau : moyenne des plis
         fold = ck["fold_of"].get(str(ep))
+        if fold is None and str(ep) in {str(Path(k).resolve()) for k in ck["fold_of"]}:
+            fold = {str(Path(k).resolve()): v for k, v in ck["fold_of"].items()}[str(ep)]
+        if fold is None and any(Path(k).name == ep.name and Path(k).parent.name == ep.parent.name for k in ck["fold_of"]):
+            log.warning("%s : vu à l'entraînement de la valeur mais pli introuvable (chemin changé ?) -> "
+                        "moyenne de tous les plis, PAS hors pli", ep)
         use = [models[fold]] if fold is not None else models
         with torch.no_grad():
             v = np.mean([m(f, s).cpu().numpy() for m in use], axis=0) * H   # pas restants prédits
@@ -260,7 +282,11 @@ def cmd_label(a) -> None:
         t1 = np.minimum(np.arange(n) + a.chunk, n - 1)
         nominal = t1 - np.arange(n)
         progress = v - v[t1]
-        adv = ((nominal > 0) & (progress >= a.threshold * np.maximum(nominal, 1))).astype(np.float32)
+        # on ne peut pas gagner plus de pas qu'il n'en reste : le gain attendu est plafonné par v[t].
+        # Sans ce plafond, la fin de tâche (lâcher, poser) et la tenue étaient étiquetées négatives
+        # (audit du 1/10). Tâche quasi finie (moins de DONE_STEPS pas restants prédits) : positif.
+        ideal = np.minimum(nominal, np.maximum(v, 0.0))
+        adv = ((ideal < DONE_STEPS) | (progress >= a.threshold * ideal)).astype(np.float32)
         adv[nominal == 0] = adv[max(0, n - 2)] if n > 1 else 1.0
         adv[inter > 0.5] = 1.0                             # corrections de l'opérateur : positives
         for st, x in zip(doc["data"], adv):

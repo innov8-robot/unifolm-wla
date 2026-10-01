@@ -536,7 +536,12 @@ class SingleSourceDataset(Dataset):
         key = self.config.advantage_key
         if not key:
             return {}
-        if key not in item or random.random() < self.config.advantage_dropout:
+        if key not in item:
+            # clé configurée mais absente du dataset : sinon l'entraînement serait silencieusement SANS
+            # condition (audit du 1/10)
+            raise KeyError(f"advantage_key {key!r} absente des données de {self.config.name} "
+                           f"(dataset converti sans --advantage on ?)")
+        if random.random() < self.config.advantage_dropout:
             return {"advantage": -1.0}
         return {"advantage": float(self._to_numpy(item[key]).ravel()[0])}
 

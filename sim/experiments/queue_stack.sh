@@ -28,7 +28,16 @@ machine_free() {
     local gpu ram
     gpu=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)
     ram=$(free -g | awk '/^Mem:/ {print $7}')
+    [[ $gpu =~ ^[0-9]+$ && $ram =~ ^[0-9]+$ ]] || return 1     # nvidia-smi absent ou illisible : pas libre
     (( gpu < 2000 && ram >= 18 ))
+}
+OWN=0
+acquire() {  # verrou ATOMIQUE (noclobber) : deux files qui voient la machine libre ne démarrent pas ensemble
+    while :; do
+        wait_free
+        if ( set -o noclobber; echo "$$ $(basename "$0")" > "$BUSY" ) 2>/dev/null; then OWN=1; return; fi
+        say "verrou pris par une autre file, nouvelle attente"
+    done
 }
 wait_free() {
     say "attente d'une machine libre"
@@ -40,14 +49,13 @@ wait_free() {
     say "machine libre"
 }
 SRV=""
-cleanup() { [[ -n "$SRV" ]] && kill $SRV 2>/dev/null; rm -f "$BUSY"; }
+cleanup() { [[ -n "$SRV" ]] && kill $SRV 2>/dev/null; [[ $OWN == 1 ]] && rm -f "$BUSY"; }
 trap cleanup EXIT
 
 say "file empilement : attente des $N démos"
 until [[ -f $RAW/summary.json ]]; do sleep 30; done
 say "démos prêtes : $(python3 -c "import json;d=json.load(open('$RAW/summary.json'));print(d['kept'],'gardées sur',d['tried'],'essais')")"
-wait_free
-touch "$BUSY"
+acquire     # attend une machine libre puis prend le verrou (atomique)
 
 [[ $N == 25 ]] || sed "s|g1d_sim_stack_n25/|$DATA/|; s|25 démos|$N démos|" $CFG/g1d_sim_stack_n25.yaml > $CFG/$DATA.yaml
 say "conversion"

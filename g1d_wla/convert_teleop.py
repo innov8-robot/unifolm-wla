@@ -113,8 +113,14 @@ def convert_episode(ep: dict, fk: dict, torso_pitch_index: int | None, torso_pit
     steps = ep["steps"]
     T = len(steps)
     out = {}
-    body = np.array([s["states"]["body"]["qpos"] for s in steps], float) if steps[0]["states"]["body"]["qpos"] else None
-    layout = ep.get("info", {}).get("body_layout", {})     # écrit par l'enregistreur : prioritaire
+    has_body = [bool(s["states"].get("body", {}).get("qpos")) for s in steps]
+    if any(has_body) and not all(has_body):
+        raise ValueError(f"body.qpos présent sur {sum(has_body)}/{T} pas seulement : enregistrement incohérent")
+    body = np.array([s["states"]["body"]["qpos"] for s in steps], float) if all(has_body) else None
+    # info.body_layout (écrit par l'enregistreur) prioritaire, sauf ses valeurs None (audit du 1/10)
+    layout = {k: v for k, v in (ep.get("info", {}).get("body_layout") or {}).items() if v is not None}
+    if torso_pitch_const is None and "torso_pitch_const" in layout:
+        torso_pitch_const = float(layout["torso_pitch_const"])   # tangage CONSTANT utilisé à l'enregistrement
     torso_pitch_index = layout.get("torso_pitch", torso_pitch_index)
     torso_yaw_index = layout.get("torso_yaw", torso_yaw_index)
     yaw = body[:, torso_yaw_index] if body is not None and torso_yaw_index is not None else np.zeros(T)
@@ -201,6 +207,10 @@ def main() -> None:
         args.advantage == "auto" and any("advantage" in load_episode(p)["steps"][0] for p in ep_dirs))
     if with_adv:
         log.info("colonnes advantage / intervention écrites (défaut %.1f)", args.default_advantage)
+        unlabeled = [p.name for p in ep_dirs if "advantage" not in load_episode(p)["steps"][0]]
+        if unlabeled:      # un lot oublié à l'étiquetage deviendrait entièrement « positif » (audit du 1/10)
+            log.warning("%d épisode(s) SANS étiquette d'avantage -> %.1f partout : %s", len(unlabeled),
+                        args.default_advantage, ", ".join(unlabeled[:10]) + (" ..." if len(unlabeled) > 10 else ""))
     ds = LeRobotDataset.create(repo_id=args.repo_id, fps=FPS, features=build_features(
                                    {k: k for k in image_keys.values()}, with_adv), root=args.out_dir,
                                robot_type="unitree_g1d", use_videos=True, vcodec=args.vcodec,

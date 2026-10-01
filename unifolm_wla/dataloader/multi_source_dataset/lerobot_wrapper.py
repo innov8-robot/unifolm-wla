@@ -92,6 +92,10 @@ class LeRobotDatasetWithSelectedKeys(LeRobotDataset):
             "root": str(self.root),
             "columns": sorted(columns or []),
             "episodes": sorted(self.episodes) if self.episodes is not None else None,
+            # contenu des parquet (date, taille) : un dataset reconverti au même chemin (RECAP, DAgger)
+            # ne relit plus d'anciennes données (G1-D, audit du 1/10)
+            "parquet": sorted((str(p.relative_to(self.root)), p.stat().st_mtime_ns, p.stat().st_size)
+                              for p in Path(self.root).glob("data/**/*.parquet")),
         }
         return hashlib.md5(json.dumps(key_data, sort_keys=True).encode()).hexdigest()
 

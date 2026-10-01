@@ -37,7 +37,6 @@ STACK_TOL = 0.008           # écart de position max à la pose emboîtée (m)
 STACK_TOL_DEG = 10.0
 SUPPORT_MOVE_TOL = 0.01
 FULL_ORIENTATION = True
-HELD_DZ = 0.03              # pièce plus haute que le support de 3 cm et pince fermée = déjà tenue
 
 
 @dataclass
@@ -114,7 +113,7 @@ def _execute(sim: G1DSim, plan: list, t0: int, hold_left: np.ndarray, on_step) -
     return refused
 
 
-def _place_pose(sim: G1DSim, clear: float) -> np.ndarray:
+def _place_pose(sim: G1DSim, clear: float, yaw: float | None = None) -> np.ndarray:
     """Effecteur (base WLA) qui amène la pièce TENUE à sa pose emboîtée + ``clear`` en z, calculé
     avec la pose RÉELLE de la pièce dans la pince (elle glisse de ~1 cm et ~10° à la levée).
 
@@ -139,10 +138,23 @@ def _place_pose(sim: G1DSim, clear: float) -> np.ndarray:
         # l'orientation complète si le poignet l'atteint, sinon on garde le lacet seul
         Tf = target @ np.linalg.inv(P) @ E
         Tf[2, 3] += clear
-        B, X = sim.base_pose_wla(), np.linalg.inv(sim._tcp_to_ee("right"))
-        if sim.solve_ik("right", B @ Tf @ X, q0=sim.arm_q("right"), follow=False)[1]:
+        if _reachable(sim, Tf, sim.torso_yaw() if yaw is None else yaw):   # au lacet du DÉPÔT
             return Tf
     return T
+
+
+def piece_held(sim: G1DSim) -> bool:
+    """Pièce tenue par la pince droite : en contact avec un doigt droit et avec RIEN d'autre (ni
+    table, ni support). Remplace un seuil de hauteur, faux près de la pose emboîtée (audit du 1/10)."""
+    m, d = sim.m, sim.d
+    pid = m.body("piece").id
+    fingers = {m.body(f"right_gripper_Link{i}_1").id for i in (1, 2)}
+    touch = set()
+    for c in d.contact[:d.ncon]:
+        b1, b2 = m.geom_bodyid[c.geom1], m.geom_bodyid[c.geom2]
+        if pid in (b1, b2):
+            touch.add(b2 if b1 == pid else b1)
+    return bool(touch & fingers) and not (touch - fingers)
 
 
 def _reachable(sim: G1DSim, M_base: np.ndarray, yaw: float) -> bool:
@@ -181,8 +193,7 @@ def run_expert(sim: G1DSim, g: N.NovaresGrasp, params: StackParams = StackParams
     hold_left = sim.ee_pose_wla("left")
     t, refused = 0, 0
     # pièce déjà tenue (reprise en main au milieu d'un essai de la politique) : on saute la saisie
-    held = (sim.object_pose("piece")[2, 3] - sim.object_pose("piece2")[2, 3] > HELD_DZ
-            and sim.gripper("right") > 0.3)
+    held = piece_held(sim) and sim.gripper("right") > 0.3
     if not held:
         cands = N.grasp_candidates(sim, g)
         if not cands:
@@ -217,7 +228,7 @@ def run_expert(sim: G1DSim, g: N.NovaresGrasp, params: StackParams = StackParams
         t += len(plan)
 
     # 2. transport au-dessus de la pose emboîtée (calculée avec la pièce réellement tenue)
-    Tp = _place_pose(sim, params.place_clear)
+    Tp = _place_pose(sim, params.place_clear, params.torso_yaw)
     above = Tp[:3, 3] + np.array([0.0, 0.0, params.carry_up])
     Tab = Tp.copy()
     Tab[:3, 3] = above

@@ -14,6 +14,14 @@ G1_PELVIS_TO_TORSO_XYZ = np.array([-0.0039635, 0.0, 0.044])
 #: sans rotation (exact sur le G1). Sur le G1-D, même point par rapport à la pince (±3 mm en y).
 WLA_EE_IN_WRIST = {"left": np.array([0.105, 0.003, 0.0]), "right": np.array([0.105, -0.003, 0.0])}
 
+#: pince Dex1 en unité moteur : 0 fermée -> DEX1_OPEN ouverte (état et action)
+DEX1_OPEN = 5.4
+
+#: indices du buste dans ``body.qpos`` (35 moteurs, disposition G1_29) écrits par la sim ; sur le
+#: robot G1-D, HYPOTHÈSES à vérifier (12 = lacet de taille du G1_29, 13 = roulis chez le G1_29)
+TORSO_YAW_INDEX = 12
+TORSO_PITCH_INDEX = 13
+
 #: tangage médian du buste à l'entraînement (``state_torso``, 54 M frames), 0.13–0.18 selon la tâche
 TORSO_PITCH_TRAINING = 0.166
 
@@ -38,8 +46,10 @@ def _rot_z(a: float) -> np.ndarray:
 
 def base_T_torso(torso_pitch: float, torso_yaw: float = 0.0) -> np.ndarray:
     """Pose 4×4 de ``torso_link`` dans la base WLA. Chaîne du G1-D : tangage du buste
-    (``Yaw_Joint``, axe y malgré son nom) PUIS rotation gauche-droite (``torso_Joint``, axe z),
-    les deux pivots étant à l'origine du torse : la base WLA reste fixe quand le buste tourne."""
+    (``Yaw_Joint``, axe y malgré son nom) PUIS rotation gauche-droite (``torso_Joint``, axe z).
+    Le pivot du lacet est à l'origine du torse : la base WLA reste fixe quand le buste tourne. Le
+    pivot du tangage est 0,104 m plus bas : la base virtuelle bougerait si le tangage variait en
+    cours d'épisode (il est constant en pratique)."""
     T = np.eye(4)
     T[:3, :3] = _rot_y(float(torso_pitch)) @ _rot_z(float(torso_yaw))
     T[:3, 3] = G1_PELVIS_TO_TORSO_XYZ

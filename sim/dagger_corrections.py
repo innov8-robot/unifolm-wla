@@ -28,10 +28,14 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--rollouts", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
-    ap.add_argument("--context", type=int, default=10, help="pas de la politique gardés avant la reprise")
+    ap.add_argument("--context", type=int, default=0,
+                    help="pas de la politique gardés avant la reprise. 0 par défaut : ces pas SONT l'échec "
+                         "(ex. pince fermée à vide) et seraient appris par clonage (audit du 1/10)")
     ap.add_argument("--min-steps", dest="min_steps", type=int, default=40, help="morceau minimal gardé")
     ap.add_argument("--overwrite", action="store_true")
     a = ap.parse_args()
+    if a.out.resolve() == a.rollouts.resolve():
+        raise SystemExit("--out doit différer de --rollouts")
     if a.out.exists():
         if not a.overwrite:
             raise SystemExit(f"{a.out} existe déjà (--overwrite)")
@@ -56,7 +60,10 @@ def main() -> None:
             it = dict(it, idx=k, colors=dict(it["colors"]))
             for cam, rel in it["colors"].items():
                 name = f"colors/{k:06d}_{cam}.jpg"
-                os.link(ep / rel, dst / name)       # lien dur : pas de place disque en plus
+                try:
+                    os.link(ep / rel, dst / name)   # lien dur : pas de place disque en plus
+                except OSError:
+                    shutil.copy2(ep / rel, dst / name)   # autre système de fichiers
                 it["colors"][cam] = name
             new.append(it)
         ss = info.get("success_step")

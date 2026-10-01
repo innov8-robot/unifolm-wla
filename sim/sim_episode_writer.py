@@ -20,13 +20,10 @@ import numpy as np
 from PIL import Image
 
 from g1d_sim import SIDES, G1DSim
+from g1d_wla.frames import DEX1_OPEN, TORSO_PITCH_INDEX, TORSO_YAW_INDEX  # (source unique ; g1d_sim met le dépôt dans le chemin)
 
-TORSO_PITCH_INDEX = 13
-TORSO_YAW_INDEX = 12          # même place que waist_yaw dans la disposition G1_29
 ARM_BODY_SLICE = {"left": slice(15, 22), "right": slice(22, 29)}
 VIEWS = ("head_left", "cam_wrist_left", "cam_wrist_right")
-#: pince Dex1 grande ouverte, unité moteur (xr_teleoperate : 0 fermée -> 5.4 ouverte)
-DEX1_OPEN = 5.4
 
 
 def closure_to_dex1(c: float) -> float:

@@ -1,0 +1,65 @@
+# Config de données UnifoLM-WLA pour les démos SIM du G1-D (validation de la chaîne complète).
+# Identique à la source Dex1 de unitree.yaml, sauf :
+#   - les chemins (playground/, relatifs à la racine du dépôt) ;
+#   - la tête : œil gauche BRUT (head_stereo_left), seul enregistré par xr_teleoperate ;
+#   - le nom de source = "UnifoLM_G1_Dex1" : c'est la clé de normalisation du modèle Base. On garde
+#     les MÊMES statistiques précollectées (ne pas les recalculer, docs/G1D_Constats.md §9).
+target_fps: 30
+chunk_size: 30  # 1 second at 30 FPS
+image_size: [336, 448]
+norm_type: "minmax_q"
+rel_norm_type: "zscore"
+state_norm_type: "minmax_q"
+gripper_norm_type: "minmax_q"
+data_base: "playground/Datasets"
+cache_dir: "playground/cache"
+
+image_roles:
+  - "head_left"
+  - "cam_wrist_left"
+  - "cam_wrist_right"
+
+datasets:
+  - name: "UnifoLM_G1_Dex1"
+    data_path: "g1d_stack_dagger_r1/"  # 25 démos expertes d'empilement (sim/record_sim_demos.py --task stack)
+    enabled: true
+    weight: 1.0
+    robot_type: "unitree"
+    source_fps: 30
+    arm_type: "dual_with_legs"
+    ee_format: "xyz_rpy"
+    multi_task: true
+    merge_left_right_ee_stats: true
+    precollected_stats_path: "unifolm_wla/dataloader/multi_source_dataset/stats"
+    action_keys:
+      left_ee_pose: "action.left_ee_pose_gripper_base"
+      right_ee_pose: "action.right_ee_pose_gripper_base"
+      left_gripper: "action.left_gripper"
+      right_gripper: "action.right_gripper"
+      waist_joint: "action.waist_action_joint"
+      base_command: "action.base_command"
+      left_leg: "action.left_leg"
+      right_leg: "action.right_leg"
+    state_keys:
+      left_ee_pose: "observation.state.left_ee_pose_gripper_base"
+      right_ee_pose: "observation.state.right_ee_pose_gripper_base"
+      left_gripper: "observation.state.left_gripper"
+      right_gripper: "observation.state.right_gripper"
+      waist_joint: "observation.state.waist_state_joint"
+      left_leg: "observation.state.left_leg"
+      right_leg: "observation.state.right_leg"
+    relative_stats_key_map:
+      left_ee_pose: "left_ee_pose_gripper_base"
+      right_ee_pose: "right_ee_pose_gripper_base"
+    base_command_dims:
+      vx: 0
+      vy: 1
+      vw: 2
+      height: 3
+    image_keys:
+      - key: "observation.images.head_stereo_left"
+        role: "head_left"
+      - key: "observation.images.wrist_left"
+        role: "cam_wrist_left"
+      - key: "observation.images.wrist_right"
+        role: "cam_wrist_right"
