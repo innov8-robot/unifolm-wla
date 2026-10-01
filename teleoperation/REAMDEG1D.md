@@ -31,7 +31,26 @@ python teleop_hand_and_arm.py --network-interface=enx0c3796e0bc5b --img-server-i
 # Dex1 internes par défaut (--dex1-bus internal) ; + --torso-yaw-index 12 pour tourner le buste au joystick droit
 ```
 
-## 3) CASQUE VR
+## 3) CASQUE VR — par câble USB (recommandé : le Wi-Fi donne une grosse latence)
+
+Mesuré le 1er octobre 2026 avec `--timing` : par le Wi-Fi, les poses des manettes arrivent PAR PAQUETS
+(cible qui saute de 90 à 270 mm en 1/60 s, puis immobile) ; par le câble USB, 2 à 33 mm par pas.
+
+```bash
+sudo apt install adb                 # une fois
+# Pico 4 Ultra : Paramètres > Général > À propos > cliquer 7-10 fois sur « Version du logiciel »,
+# puis Paramètres > Développeur > Débogage USB. Brancher le câble DIRECTEMENT sur le PC (pas le dock),
+# accepter « Autoriser le débogage USB » dans le casque.
+adb devices                          # attendu : <numéro>  device
+adb reverse tcp:8012 tcp:8012        # à refaire après chaque rebranchement
+```
+Dans le navigateur du casque : `https://localhost:8012` (accepter le certificat), puis
+`https://vuer.ai/?ws=wss://localhost:8012&grid=False` -> Virtual Reality. Bien **localhost**, pas l'IP Wi-Fi.
+Vérification côté PC : `ss -tn sport = :8012` ne doit plus montrer l'IP Wi-Fi du casque.
+
+Réglages conseillés : `--frequency 60 --ik-smooth light` (enregistrement toujours à 30 Hz).
+
+## 3 bis) CASQUE VR — par Wi-Fi (dépannage seulement)
 ```text
 # IP wifi du PC (si elle a changé) :  ip -brief addr show wlp131s0f0    (ex : 10.3.8.62)
 # 1. Accepter le certificat : ouvrir   https://10.3.8.62:8012   -> Advanced -> Proceed
