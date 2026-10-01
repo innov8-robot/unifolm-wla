@@ -273,6 +273,13 @@ if __name__ == '__main__':
                 yaw_rate = min(args.torso_yaw_rate, args.policy_max_speed / 0.5) if bridge is not None else args.torso_yaw_rate
                 arm_ctrl.enable_torso_yaw(args.torso_yaw_index, args.torso_yaw_max, yaw_rate,
                                           forbidden=(args.torso_pitch_index,) if args.torso_pitch is None else ())
+                # buste ramené au CENTRE dès le lancement (avant [r]), à vitesse bornée, comme mpc_any à la
+                # connexion ; on attend qu'il y soit (les bras, tenus en articulaire, tournent avec lui)
+                arm_ctrl.center_torso_yaw()
+                t_c = time.time()
+                while abs(arm_ctrl.torso_yaw_measured()) > 0.03 and time.time() - t_c < 8.0:
+                    time.sleep(0.05)
+                logger_mp.info(f"buste au centre : {arm_ctrl.torso_yaw_measured():+.3f} rad")
         elif args.arm == "G1_23":
             arm_ik = G1_23_ArmIK()
             arm_ctrl = G1_23_ArmController(motion_mode=args.motion, simulation_mode=args.sim)

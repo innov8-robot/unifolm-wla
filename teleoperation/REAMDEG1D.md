@@ -222,7 +222,7 @@ Mesuré hors robot (moteurs supposés parfaits) : délai pour suivre 90 % d'un d
 | **B** droit | Annuler l'enregistrement en cours |
 | **Y** gauche | **Pause + recalage** : le suivi s'arrête, les bras vont doucement (2,5 s) en posture de calibration — position zéro du G1, bras le long du corps, avant-bras vers l'avant, coudes ~80°. Prenez la même posture, puis **Y** à nouveau : la pose actuelle des manettes devient celle des mains du robot (recalage en position, pas de saut). Pinces figées et pas non enregistrés pendant la pause. Hors mode politique (Y = essai raté) |
 | Gâchettes | Pinces |
-| Joystick droit ←/→ | Rotation du buste (`--torso-yaw-index 12`) |
+| Joystick droit ←/→ | Rotation du buste (`--torso-yaw-index 12`). **Au lancement, le buste revient au centre** (0 rad) à vitesse bornée, avant `r` |
 | Joystick **gauche** | **Base roulante** (`--base`) : ↑/↓ avancer/reculer, ←/→ tourner. Bornes `--base-max-vx 0.3` m/s, `--base-max-vyaw 0.4` rad/s (châssis : 1,0 / 0,6). Arrêt si la manette gauche ne bouge plus depuis 0,3 s (casque déconnecté), pendant la pause Y, et à la sortie (zéros répétés : la base roule ~1,5 s sinon). Enregistré dans `action.base_command` |
 | `q` (clavier) | Quitter (buste ramené droit, bras rentrés lentement) |
 

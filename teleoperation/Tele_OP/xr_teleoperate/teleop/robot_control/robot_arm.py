@@ -98,7 +98,8 @@ class G1_29_ArmController:
         self._dex1_cmd = [0.0, 0.0]
         self.TORSO_YAW_KP = 180.0      # gains du buste (G1-D, moteur waist_yaw), mesurés dans mpc_any
         self.TORSO_YAW_KD = 2.6
-        self.TORSO_YAW_LEAD = 0.15     # écart max consigne / mesure (rad) : un buste bloqué ne force pas
+        self.TORSO_YAW_LEAD = 0.15
+        self.TORSO_YAW_ABS_LIMIT = 2.3 # course mesurée du buste sur ce G1-D (mpc_any : ~-2.0 / +2.36)     # écart max consigne / mesure (rad) : un buste bloqué ne force pas
 
         if self.motion_mode:
             self.lowcmd_publisher = ChannelPublisher(kTopicLowCommand_Motion, hg_LowCmd)
@@ -238,9 +239,9 @@ class G1_29_ArmController:
         if not (0 <= int(index) < G1_29_Num_Motors) or int(index) in arm or int(index) in set(forbidden):
             raise ValueError(f"indice de rotation du buste {index} refusé (bras, tangage ou hors [0, {G1_29_Num_Motors}))")
         q0 = float(self.get_current_motor_q()[index])
-        if abs(q0) > max_abs:
-            raise ValueError(f"moteur {index} mesuré à {q0:.3f} rad, hors de ±{max_abs} : mauvais indice ou buste "
-                             f"déjà tourné — rien n'est commandé")
+        if abs(q0) > self.TORSO_YAW_ABS_LIMIT:
+            raise ValueError(f"moteur {index} mesuré à {q0:.3f} rad, hors de la course du buste "
+                             f"(±{self.TORSO_YAW_ABS_LIMIT}) : mauvais indice — rien n'est commandé")
         with self.ctrl_lock:
             self._torso_yaw_max, self._torso_yaw_rate = float(max_abs), float(rate)
             self._torso_yaw_target = self._torso_yaw_cmd = q0
@@ -302,6 +303,17 @@ class G1_29_ArmController:
     def get_gripper_targets(self):
         with self.ctrl_lock:
             return list(self._dex1_target)
+
+    def center_torso_yaw(self):
+        """Ramène le buste au centre (0 rad), à la vitesse bornée de la rampe. Non bloquant."""
+        if self.torso_yaw_index is None:
+            return
+        with self.ctrl_lock:
+            self._torso_yaw_target = 0.0
+        logger_mp.info(f"[G1_29_ArmController] buste ramené au centre (départ {self._torso_yaw_cmd:+.3f} rad)")
+
+    def torso_yaw_measured(self) -> float:
+        return float(self.lowstate_buffer.GetData().motor_state[self.torso_yaw_index].q)
 
     def hold_torso_yaw(self):
         """Fige le buste à sa consigne courante (tenue)."""
