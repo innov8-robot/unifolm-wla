@@ -37,6 +37,7 @@ STACK_TOL = 0.008           # écart de position max à la pose emboîtée (m)
 STACK_TOL_DEG = 10.0
 SUPPORT_MOVE_TOL = 0.01
 FULL_ORIENTATION = True
+HELD_DZ = 0.03              # pièce plus haute que le support de 3 cm et pince fermée = déjà tenue
 
 
 @dataclass
@@ -163,40 +164,45 @@ def _pick_grasp(sim: G1DSim, cands: list, params: StackParams):
 def run_expert(sim: G1DSim, g: N.NovaresGrasp, params: StackParams = StackParams(), on_step=None) -> dict:
     """Expert en phases, REPLANIFIÉ avec l'état réel (sim) : saisie -> levée -> [mesure] ->
     transport au-dessus -> [mesure] -> descente -> ouverture -> retrait."""
-    cands = N.grasp_candidates(sim, g)
-    if not cands:
-        return {"success": False, "lifted": 0.0, "steps": 0, "ik_refused": -1, "reason": "aucune prise atteignable"}
     B, X = sim.base_pose_wla(), np.linalg.inv(sim._tcp_to_ee("right"))
     sup0 = sim.object_pose("piece2")[:3, 3].copy()
-    Tg = _pick_grasp(sim, cands, params)
-    if Tg is None:
-        return {"success": False, "lifted": 0.0, "steps": 0, "ik_refused": -1, "reason": "aucune prise avec dépôt atteignable"}
-    f = Tg[:3, 0]
-    T0 = sim.ee_pose_wla("right")
     hold_left = sim.ee_pose_wla("left")
-    p0, R0 = T0[:3, 3], T0[:3, :3]
-    grasp = Tg[:3, 3]
-    pre = grasp - params.pre_back * f
-    lift = grasp + np.array([0.0, 0.0, params.lift])
-    up = p0 + np.array([0.0, 0.0, params.raise_z])
-    Tup, Tpre = np.eye(4), np.eye(4)
-    Tup[:3, :3], Tup[:3, 3] = R0, up
-    Tpre[:3, :3], Tpre[:3, 3] = Tg[:3, :3], pre
-    q_up, ok1 = sim.solve_ik("right", B @ Tup @ X, q0=sim.arm_q("right"), follow=True)
-    q_pre, ok2 = sim.solve_ik("right", B @ Tpre @ X, q0=q_up, follow=False)
-    if not (ok1 and ok2):
-        return {"success": False, "lifted": 0.0, "steps": 0, "ik_refused": -1, "reason": "trajet inatteignable"}
+    t, refused = 0, 0
+    # pièce déjà tenue (reprise en main au milieu d'un essai de la politique) : on saute la saisie
+    held = (sim.object_pose("piece")[2, 3] - sim.object_pose("piece2")[2, 3] > HELD_DZ
+            and sim.gripper("right") > 0.3)
+    if not held:
+        cands = N.grasp_candidates(sim, g)
+        if not cands:
+            return {"success": False, "lifted": 0.0, "steps": 0, "ik_refused": -1, "reason": "aucune prise atteignable"}
+        Tg = _pick_grasp(sim, cands, params)
+        if Tg is None:
+            return {"success": False, "lifted": 0.0, "steps": 0, "ik_refused": -1, "reason": "aucune prise avec dépôt atteignable"}
+        f = Tg[:3, 0]
+        T0 = sim.ee_pose_wla("right")
+        p0, R0 = T0[:3, 3], T0[:3, :3]
+        grasp = Tg[:3, 3]
+        pre = grasp - params.pre_back * f
+        lift = grasp + np.array([0.0, 0.0, params.lift])
+        up = p0 + np.array([0.0, 0.0, params.raise_z])
+        Tup, Tpre = np.eye(4), np.eye(4)
+        Tup[:3, :3], Tup[:3, 3] = R0, up
+        Tpre[:3, :3], Tpre[:3, 3] = Tg[:3, :3], pre
+        q_up, ok1 = sim.solve_ik("right", B @ Tup @ X, q0=sim.arm_q("right"), follow=True)
+        q_pre, ok2 = sim.solve_ik("right", B @ Tpre @ X, q0=q_up, follow=False)
+        if not (ok1 and ok2):
+            return {"success": False, "lifted": 0.0, "steps": 0, "ik_refused": -1, "reason": "trajet inatteignable"}
 
-    # 1. saisie + levée
-    plan = [("cart", p0, R0, 0.0)] * params.t_hold0
-    plan += [("cart", p, R0, 0.0) for p in _minjerk(p0, up, params.t_raise)]
-    plan += [("joint", q, None, 0.0) for q in _minjerk(q_up, q_pre, params.t_pre)]
-    plan += [("cart", p, Tg[:3, :3], 0.0) for p in _minjerk(pre, grasp, params.t_approach)]
-    plan += [("cart", grasp, Tg[:3, :3], c) for c in np.linspace(0.0, 1.0, params.t_close + 1)[1:]]
-    plan += [("cart", p, Tg[:3, :3], 1.0) for p in _minjerk(grasp, lift, params.t_lift)]
-    t = 0
-    refused = _execute(sim, plan, t, hold_left, on_step)
-    t += len(plan)
+        # 1. saisie + levée
+        plan = [("cart", p0, R0, 0.0)] * params.t_hold0
+        plan += [("cart", p, R0, 0.0) for p in _minjerk(p0, up, params.t_raise)]
+        plan += [("joint", q, None, 0.0) for q in _minjerk(q_up, q_pre, params.t_pre)]
+        plan += [("cart", p, Tg[:3, :3], 0.0) for p in _minjerk(pre, grasp, params.t_approach)]
+        plan += [("cart", grasp, Tg[:3, :3], c) for c in np.linspace(0.0, 1.0, params.t_close + 1)[1:]]
+        plan += [("cart", p, Tg[:3, :3], 1.0) for p in _minjerk(grasp, lift, params.t_lift)]
+        t = 0
+        refused = _execute(sim, plan, t, hold_left, on_step)
+        t += len(plan)
 
     # 2. transport au-dessus de la pose emboîtée (calculée avec la pièce réellement tenue)
     Tp = _place_pose(sim, params.place_clear)

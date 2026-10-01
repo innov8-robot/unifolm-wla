@@ -48,13 +48,17 @@ async def run_episode(ws, packer, sim: G1DSim, task, rng, args, w: SimEpisodeWri
     await ws.send(packer.pack({"type": "policy_reset"}))
     await ws.recv()
     t, success_step, takeover_step, prev_exec = 0, None, None, None
+    closed_empty = 0
 
     def lifted() -> float:
         return float(sim.object_pose(task.body)[2, 3] - z0)
 
+    def accomplished() -> bool:      # empilement : emboîtée et lâchée ; sinon : objet soulevé
+        return task.success_now(sim) if task.success_now else lifted() > task.lift_success
+
     def check(tt: int) -> None:
         nonlocal success_step
-        if success_step is None and lifted() > task.lift_success:
+        if success_step is None and accomplished():
             success_step = tt
 
     def done() -> bool:          # réussite + tenue de ``hold_steps`` pas (l'issue se juge à la FIN)
@@ -79,6 +83,10 @@ async def run_episode(ws, packer, sim: G1DSim, task, rng, args, w: SimEpisodeWri
         n = min(args.exec_steps, len(chunk["left"]))
         knocked = False
         for k in range(n):
+            if args.miss_steps and sim.gripper("right") > 0.95:
+                closed_empty += 1         # pince fermée à fond : rien entre les doigts
+            else:
+                closed_empty = 0
             closure = {}
             for s in SIDES:
                 sim.track_ee_wla(s, xyz_rpy_to_matrix(chunk[s][k]))
@@ -91,6 +99,9 @@ async def run_episode(ws, packer, sim: G1DSim, task, rng, args, w: SimEpisodeWri
             moved = float(np.linalg.norm(sim.object_pose(task.body)[:2, 3] - xy0))
             if success_step is None and moved > args.knock_cm / 100 and lifted() < 0.02:
                 knocked = True
+                break
+            if args.miss_steps and success_step is None and closed_empty >= args.miss_steps:
+                knocked = True            # saisie ratée : l'opérateur reprend tout de suite
                 break
             if done() or t >= args.max_steps:
                 break
@@ -113,7 +124,7 @@ async def run_episode(ws, packer, sim: G1DSim, task, rng, args, w: SimEpisodeWri
         z0 = z0_before
 
     # 3. issue jugée à la fin : l'objet doit être encore soulevé (une prise qui lâche = échec)
-    outcome = "success" if success_step is not None and lifted() > task.lift_success else "failure"
+    outcome = "success" if success_step is not None and accomplished() else "failure"
     return {"success_step": success_step, "takeover_step": takeover_step, "outcome": outcome,
             "steps": t, "lifted": round(lifted(), 4)}
 
@@ -166,6 +177,8 @@ def main() -> None:
     ap.add_argument("--takeover-step", dest="takeover_step", type=int, default=220,
                     help="l'opérateur prend la main si pas de réussite à ce pas")
     ap.add_argument("--knock-cm", dest="knock_cm", type=float, default=3.0)
+    ap.add_argument("--miss-steps", dest="miss_steps", type=int, default=0,
+                    help="reprise si la pince droite reste fermée à fond ce nombre de pas (saisie ratée) ; 0 = non")
     ap.add_argument("--hold-steps", dest="hold_steps", type=int, default=20,
                     help="pas de tenue après la réussite, l'issue est jugée à la fin")
     ap.add_argument("--no-operator", dest="operator", action="store_false",
