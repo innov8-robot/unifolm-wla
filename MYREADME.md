@@ -50,7 +50,7 @@ Ce fork adapte **UnifoLM-WLA-1.0** d'Unitree au **G1-D** : robot sur base roulan
 - **Dataset Studio** (`dataset_studio/`, PySide6, thème du cockpit de mpc_any) : voir et modifier les enregistrements de la téléop. Liste des épisodes (durée, issue, pinces utilisées, base / colonne, images manquantes), lecture des 4 caméras synchronisées, courbes (articulations état / consigne, pinces, buste, colonne, base), suppression vers une corbeille avec renumérotation sans trou, restauration, rognage début / fin, consigne et issue modifiables, conversion au format WLA en un clic.
   ```bash
   conda activate g1d_teleop
-  python -m dataset_studio teleoperation/Tele_OP/xr_teleoperate/teleop/utils/data   # depuis la racine du dépôt
+  ~/Documents/project/manip/unifolm-wla/studio.sh        # depuis n'importe quel dossier (défaut : teleop/utils/data)
   ```
   Raccourcis : Espace lecture · ←/→ pas à pas · Maj+←/→ ±1 s · ↑/↓ épisode · I / O rognage · Suppr supprimer.
 
