@@ -41,7 +41,8 @@ REPO = Path(__file__).resolve().parents[4]
 for p in (REPO, REPO / "model_server"):
     if str(p) not in sys.path:
         sys.path.insert(0, str(p))
-from g1d_wla import G1_STANDING_LEGS, SIDES, ArmFK, base_T_torso, wrist_T_ee  # noqa: E402
+from g1d_wla import (G1_STANDING_LEGS, SIDES, ArmFK, base_T_torso, torso_from_waist,  # noqa: E402
+                     waist_from_torso, wrist_T_ee)
 from tools import msgpack_numpy  # noqa: E402
 
 #: décalage de ``L_ee`` / ``R_ee`` de l'IK de la téléop dans ``*_wrist_yaw_link`` (robot_arm_ik.py)
@@ -86,24 +87,27 @@ def dex1_to_trigger(g: float) -> float:
 
 
 class FrameConverter:
-    """Base WLA <-> repère de l'IK de la téléop, pour un tangage de buste donné."""
+    """Base WLA <-> repère de l'IK de la téléop, pour un buste donné (tangage, rotation gauche-droite).
+    L'IK est résolue dans un repère lié au TORSE : la rotation du buste emporte les bras, et une
+    cible fixe en base WLA reste atteinte pendant que le buste tourne (conversion au buste mesuré)."""
 
     def __init__(self) -> None:
         self.fk = {s: ArmFK(s) for s in SIDES}
         self.T_ik_torso = base_T_torso(0.0)             # IK : modèle G1 à taille verrouillée à 0
 
-    def ee_wla(self, side: str, arm_q: np.ndarray, torso_pitch: float) -> np.ndarray:
+    def ee_wla(self, side: str, arm_q: np.ndarray, torso_pitch: float, torso_yaw: float = 0.0) -> np.ndarray:
         """FK (angles mesurés, 7) -> effecteur WLA dans la base WLA (4×4)."""
-        return base_T_torso(torso_pitch) @ self.fk[side].fk(arm_q)[0] @ wrist_T_ee(side)
+        return base_T_torso(torso_pitch, torso_yaw) @ self.fk[side].fk(arm_q)[0] @ wrist_T_ee(side)
 
-    def wla_to_ik(self, side: str, T_base_ee: np.ndarray, torso_pitch: float) -> np.ndarray:
+    def wla_to_ik(self, side: str, T_base_ee: np.ndarray, torso_pitch: float, torso_yaw: float = 0.0) -> np.ndarray:
         """Effecteur WLA (base WLA) -> cible ``L_ee`` / ``R_ee`` de l'IK (repère IK)."""
-        T_torso_wrist = np.linalg.inv(base_T_torso(torso_pitch)) @ T_base_ee @ np.linalg.inv(wrist_T_ee(side))
+        T_torso_wrist = (np.linalg.inv(base_T_torso(torso_pitch, torso_yaw)) @ T_base_ee
+                         @ np.linalg.inv(wrist_T_ee(side)))
         return self.T_ik_torso @ T_torso_wrist @ _T(p=IK_EE_OFFSET)
 
-    def ik_to_wla(self, side: str, T_ik: np.ndarray, torso_pitch: float) -> np.ndarray:
+    def ik_to_wla(self, side: str, T_ik: np.ndarray, torso_pitch: float, torso_yaw: float = 0.0) -> np.ndarray:
         T_torso_wrist = np.linalg.inv(self.T_ik_torso) @ T_ik @ np.linalg.inv(_T(p=IK_EE_OFFSET))
-        return base_T_torso(torso_pitch) @ T_torso_wrist @ wrist_T_ee(side)
+        return base_T_torso(torso_pitch, torso_yaw) @ T_torso_wrist @ wrist_T_ee(side)
 
 
 class PolicyBridge:
@@ -111,7 +115,8 @@ class PolicyBridge:
                  advantage: str | None = None, exec_steps: int = 30, frequency: float = 30.0,
                  max_speed: float = 0.15, max_rot_speed: float = 1.0, delta_scale: float = 1.0,
                  rot_delta: bool = True, torso_pitch_index: int | None = 13, torso_pitch: float | None = None,
-                 control_left: bool = True, control_right: bool = True) -> None:
+                 control_left: bool = True, control_right: bool = True,
+                 torso_yaw_index: int | None = None) -> None:
         from websockets.sync.client import connect
         self.ws = connect(uri, max_size=None, open_timeout=10)
         self.packer = msgpack_numpy.Packer()
@@ -122,6 +127,7 @@ class PolicyBridge:
         self.max_rot_step = max_rot_speed / frequency
         self.delta_scale, self.rot_delta = delta_scale, rot_delta
         self.torso_pitch_index, self.torso_pitch_const = torso_pitch_index, torso_pitch
+        self.torso_yaw_index = torso_yaw_index         # None : buste supposé non tourné, rotation non pilotée
         self.control = {"left": control_left, "right": control_right}
         self.conv = FrameConverter()
         self.uri = uri
@@ -165,20 +171,25 @@ class PolicyBridge:
             return 0.0
         return float(body_q[self.torso_pitch_index])
 
+    def _yaw(self, body_q) -> float:
+        if body_q is None or self.torso_yaw_index is None or len(body_q) <= self.torso_yaw_index:
+            return 0.0
+        return float(body_q[self.torso_yaw_index])
+
     # ------------------------------------------------------------------ requête au modèle
-    def _query(self, images_bgr: dict, arm_q: np.ndarray, grip_dex1: np.ndarray, pitch: float) -> None:
+    def _query(self, images_bgr: dict, arm_q: np.ndarray, grip_dex1: np.ndarray, pitch: float, yaw: float = 0.0) -> None:
         obs = {
             "observation.images.cam_left_high": images_bgr["head"],
             "observation.images.cam_left_wrist": images_bgr["left_wrist"],
             "observation.images.cam_right_wrist": images_bgr["right_wrist"],
             "observation.state.lower_body": np.concatenate(
-                [G1_STANDING_LEGS["left"], G1_STANDING_LEGS["right"], [0.0, 0.0, pitch]]).astype(np.float32),
+                [G1_STANDING_LEGS["left"], G1_STANDING_LEGS["right"], waist_from_torso(pitch, yaw)]).astype(np.float32),
             "instruction": self.instruction,
             "unnorm_key": self.unnorm_key,
         }
         for i, s in enumerate(SIDES):
             q = arm_q[:7] if s == "left" else arm_q[7:14]
-            obs[f"observation.state.{s}_ee_6d"] = T_to_xyz_rot6d(self.conv.ee_wla(s, q, pitch))
+            obs[f"observation.state.{s}_ee_6d"] = T_to_xyz_rot6d(self.conv.ee_wla(s, q, pitch, yaw))
             obs[f"observation.state.{s}_gripper"] = np.array([grip_dex1[i]], np.float32)
         if self.advantage:
             obs["advantage"] = self.advantage
@@ -194,18 +205,24 @@ class PolicyBridge:
         try:
             chunk = {s: np.asarray(act[f"action.{s}_ee_rpy"], float)[0] for s in SIDES}
             grip = {s: np.asarray(act[f"action.{s}_gripper"], float)[0, :, 0] for s in SIDES}
+            lb = act.get("action.lower_body")
+            waist = None if lb is None else np.asarray(lb, float)[0, :, 12:15]
         except Exception as e:
             raise PolicyError(f"réponse du serveur mal formée ({e})") from e
-        if not all(np.isfinite(chunk[s]).all() and np.isfinite(grip[s]).all() for s in SIDES):
+        if not all(np.isfinite(chunk[s]).all() and np.isfinite(grip[s]).all() for s in SIDES) \
+                or (waist is not None and not np.isfinite(waist).all()):
             raise PolicyError("actions non finies (NaN/inf) renvoyées par le modèle")
         self.chunk, self.chunk_grip, self.k = chunk, grip, 0
+        # rotation du buste G1-D prédite (T,) ; None si le serveur ne renvoie pas la taille
+        self.chunk_yaw = None if waist is None else torso_from_waist(waist)[1]
         self.last_latency = time.perf_counter() - t0
 
     # ------------------------------------------------------------------ un pas de contrôle
     def measured_ik(self, arm_q: np.ndarray, body_q) -> dict:
         """Poses IK correspondant aux angles MESURÉS (pour tenir la pose ou borner une reprise)."""
-        pitch = self._pitch(body_q)
-        return {s: self.conv.wla_to_ik(s, self.conv.ee_wla(s, arm_q[:7] if s == "left" else arm_q[7:14], pitch), pitch)
+        pitch, yaw = self._pitch(body_q), self._yaw(body_q)
+        return {s: self.conv.wla_to_ik(s, self.conv.ee_wla(s, arm_q[:7] if s == "left" else arm_q[7:14], pitch, yaw),
+                                       pitch, yaw)
                 for s in SIDES}
 
     def _controller_world(self, tele_data, side: str) -> np.ndarray:
@@ -222,8 +239,9 @@ class PolicyBridge:
 
         ``images_bgr`` : {"head": œil gauche 480×640 BGR, "left_wrist", "right_wrist"} ; ``arm_q`` (14) mesuré ;
         ``grip_dex1`` (2) mesuré (unité Dex1) ; ``body_q`` (35) ; ``tele_data`` : TeleData ou None.
-        Lève ``PolicyError`` si le serveur ne répond pas ou répond des actions invalides."""
-        pitch = self._pitch(body_q)
+        Lève ``PolicyError`` si le serveur ne répond pas ou répond des actions invalides.
+        ``out["torso_yaw"]`` : rotation du buste prédite (rad), None si la rotation n'est pas pilotée."""
+        pitch, yaw = self._pitch(body_q), self._yaw(body_q)
         meas = self.measured_ik(arm_q, body_q)
         for s in SIDES:                                    # reprise : la borne part de la pose mesurée
             if self.last_target[s] is None:
@@ -235,15 +253,17 @@ class PolicyBridge:
             self.chunk = None
         new_chunk = self.chunk is None or self.k >= min(self.exec_steps, len(self.chunk["left"]))
         if new_chunk:
-            self._query(images_bgr, arm_q, grip_dex1, pitch)
+            self._query(images_bgr, arm_q, grip_dex1, pitch, yaw)
 
-        out = {"trigger": {}, "intervention": False}
+        out = {"trigger": {}, "intervention": False,
+               "torso_yaw": (float(self.chunk_yaw[self.k])
+                             if self.torso_yaw_index is not None and self.chunk_yaw is not None else None)}
         for i, s in enumerate(SIDES):
             if not self.control[s]:
                 out[s] = meas[s]                           # bras non piloté : tenir la pose mesurée
                 out["trigger"][s] = dex1_to_trigger(float(grip_dex1[i]))
                 continue
-            T = self.conv.wla_to_ik(s, xyz_rpy_to_T(self.chunk[s][self.k]), pitch)
+            T = self.conv.wla_to_ik(s, xyz_rpy_to_T(self.chunk[s][self.k]), pitch, yaw)
             g = float(self.chunk_grip[s][self.k])
             if self.grip_on[s]:
                 P = self._controller_world(tele_data, s)

@@ -40,6 +40,7 @@ Ce fork adapte **UnifoLM-WLA-1.0** d'Unitree au **G1-D** : robot sur base roulan
 | Tâche Novares en sim (prise peinte) | **Fait** : 27/30 avec 50 démos, 22/30 avec 25, 27/30 avec 10 |
 | Boucle RECAP / Delta-0 | Brique implémentée, audit corrigé. 1re itération en sim : **pas de gain** (14/30 contre 18/30 pour la référence), modèle de valeur trop faible |
 | Mode politique avec correction en delta dans la téléop | Fait, testé hors robot, **non validé sur le robot** |
+| Rotation du buste G1-D (sim, conversion, téléop au joystick droit) | Fait, testé hors robot ; **indice moteur à vérifier** |
 | Fine-tuning sur de vraies démos | Recette prête et validée en sim |
 | Push de `g1d-port` sur GitHub | **Fait**, à refaire après chaque étape |
 

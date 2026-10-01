@@ -771,3 +771,29 @@ La comparaison entre les étapes 5 et 6 dira si le gain vient du conditionnement
 - **Rollouts** : l'issue se juge après 20 pas de tenue ; une prise qui lâche compte comme un échec.
 - **File** : cache Arrow vidé avant chaque entraînement, seuil disque ramené à 13 Go.
 - **Téléop, mode politique** : la pince ne suit plus la gâchette brute ; la correction est rebasée à chaque chunk ; la borne de vitesse part de la pose mesurée ; une panne du serveur tient les bras au lieu de les renvoyer au repos ; les pas tenus ne sont pas enregistrés ; un essai terminé sans `X`/`Y` est noté `unknown` et ignoré par l'étiquetage. Tests hors robot dans `teleop/test_policy_bridge.py`.
+
+---
+
+## 16. Rotation du buste du G1-D (1er octobre 2026)
+
+**[VÉRIFIÉ, modèle sim]** Dans l'URDF du G1-D, `Yaw_Joint` est en fait le **tangage** du buste (axe y). La rotation gauche-droite est `torso_Joint` (axe z, ±155°), montée **au-dessus** du tangage. Chez le G1, l'ordre est inverse : lacet, roulis, puis tangage de la taille.
+
+**[VÉRIFIÉ]** WLA connaît la rotation : `action.waist_action_joint` = [lacet, roulis, tangage] de la taille du G1. Dans les statistiques d'entraînement, le lacet va de −0,44 à +0,57 rad (q01–q99), mais reste proche de 0 dans 80 % des données (q10–q90 ±0,04).
+
+**Contrat retenu** :
+- la base WLA reste **fixe** sous le buste ; le torse dans la base vaut Ry(tangage)·Rz(lacet) (`base_T_torso`) ;
+- la taille WLA envoyée et enregistrée est la taille G1 **de même orientation de torse**, calculée exactement (`waist_from_torso`) ; dans l'autre sens, `torso_from_waist` ;
+- en sim, la FK/IK des bras suit la rotation mesurée à chaque pas : une cible en base WLA reste tenue à 0,2 mm près pendant que le buste tourne ; le convertisseur reproduit les poses de la sim à 0,6 mm près, buste tourné.
+
+**Téléop** : rotation au joystick droit, rotation prédite appliquée en mode politique (voir `teleoperation/REAMDEG1D.md`). Tests hors robot OK (`test_policy_bridge.py`, test 6). **[INCONNU]** Indice du moteur sur le G1-D, à vérifier (hypothèse 12, comme le lacet de taille du G1_29).
+
+**[VÉRIFIÉ, sim] Pour l'empilement, la rotation n'aide pas l'expert** :
+
+| Rotation du buste au dépôt | Réussites (2 × 30 essais) |
+|---|---|
+| 0 | 16 / 60 |
+| 0,2 rad | 11 / 60 |
+| 0,35 rad | 9 / 60 |
+| 0,5 rad | 6 / 60 |
+
+Ses échecs viennent surtout de la pièce perdue ou tombée (9 / 30) et du mauvais emboîtement (6 / 30) ; les dépôts hors de portée (5 / 30) ne diminuent pas avec la rotation. Elle reste à 0 par défaut pour l'expert.

@@ -3,7 +3,9 @@
 1. conversion base WLA -> repère IK de la téléop, comparée à la FK de l'IK elle-même (G1_29_ArmIK) :
    identique (le modèle de la téléop, g1_body29_hand14, a le poignet du G1-D : 0.046 m) ;
 2. aller-retour wla_to_ik / ik_to_wla ;
-3. correspondance gâchette <-> angle Dex1.
+3. correspondance gâchette <-> angle Dex1 ;
+4-5. logique de correction et protections (faux serveur) ;
+6. rotation du buste G1-D (repère IK lié au torse, rotation prédite appliquée).
 
     cd teleoperation/Tele_OP/xr_teleoperate/teleop && python test_policy_bridge.py
 """
@@ -28,12 +30,12 @@ for _ in range(50):
     for i, s in enumerate(("left", "right")):
         T_ik = data.oMf[model.getFrameId("L_ee" if s == "left" else "R_ee")].homogeneous
         qs = q[:7] if s == "left" else q[7:]
-        pitch = rng.uniform(-0.2, 0.3)
-        T_conv = conv.wla_to_ik(s, conv.ee_wla(s, qs, pitch), pitch)
+        pitch, yaw = rng.uniform(-0.2, 0.3), rng.uniform(-0.6, 0.6)   # buste tourné : repère IK lié au torse
+        T_conv = conv.wla_to_ik(s, conv.ee_wla(s, qs, pitch, yaw), pitch, yaw)
         worst_p = max(worst_p, np.linalg.norm(T_conv[:3, 3] - T_ik[:3, 3]))
         worst_r = max(worst_r, np.abs(T_conv[:3, :3] - T_ik[:3, :3]).max())
-        back = conv.ik_to_wla(s, T_conv, pitch)
-        worst_rt = max(worst_rt, np.abs(back - conv.ee_wla(s, qs, pitch)).max())
+        back = conv.ik_to_wla(s, T_conv, pitch, yaw)
+        worst_rt = max(worst_rt, np.abs(back - conv.ee_wla(s, qs, pitch, yaw)).max())
 print(f"1. écart position conversion / IK téléop : max {worst_p * 1000:.2f} mm (le modèle IK de la téléop a le même poignet que le G1-D)")
 print(f"   écart rotation : max {worst_r:.2e}")
 print(f"2. aller-retour wla_to_ik / ik_to_wla : max {worst_rt:.2e}")
@@ -85,6 +87,10 @@ def handler(ws):
                 x[0] = np.nan
             out[f"action.{s}_ee_rpy"] = np.tile(x, (1, 30, 1)).astype(np.float32)
             out[f"action.{s}_gripper"] = np.full((1, 30, 1), 5.4, np.float32)
+        lb = np.asarray(m["obs"]["observation.state.lower_body"], np.float32).copy()   # taille : garder l'état
+        if MODE["m"] == "yaw":
+            lb[12:15] = PB.waist_from_torso(0.166, 0.3)                                # tourner le buste à 0.3
+        out["action.lower_body"] = np.tile(lb, (1, 30, 1))
         ws.send(p.pack(out))
 
 
@@ -208,6 +214,31 @@ res5["f"] = abs(o4["trigger"]["right"] - 7.0) < 1e-9
 print(f"5f. gâchette à 8/10 pendant la correction : gâchette envoyée {o4['trigger']['right']:.1f} (7 = politique, ouverte)")
 ok3 = all(res5.values())
 print("RÉSULTAT 5 :", "OK" if ok3 else f"ÉCHEC {[k for k, v in res5.items() if not v]}")
+
+# ---------------------------------------------------------------- 6. rotation du buste (G1-D)
+res6 = {}
+MODE["m"] = "hold"
+by = PB.PolicyBridge("ws://127.0.0.1:8612", "test", max_speed=0.15, torso_pitch=0.166, torso_yaw_index=12)
+body = np.zeros(35)
+body[12] = 0.25                                       # buste mesuré tourné de 0.25 rad
+o6 = by.step(imgs, q, grip, body, td)
+meas6 = by.measured_ik(q, body)
+res6["a"] = abs(o6["torso_yaw"] - 0.25) < 1e-6
+res6["b"] = all(np.abs(o6[s] - meas6[s]).max() < 1e-6 for s in ("left", "right"))
+print(f"6a. politique immobile, buste mesuré à 0.25 : rotation commandée {o6['torso_yaw']:.3f} rad")
+print(f"6b. cibles IK = pose mesurée (buste tourné pris en compte) : "
+      f"{max(np.abs(o6[s] - meas6[s]).max() for s in ('left', 'right')):.1e}")
+MODE["m"] = "yaw"
+by.reset()
+o7 = by.step(imgs, q, grip, body, td)
+res6["c"] = abs(o7["torso_yaw"] - 0.3) < 1e-6
+print(f"6c. politique qui tourne le buste à 0.3 : rotation commandée {o7['torso_yaw']:.3f} rad")
+no_yaw = PB.PolicyBridge("ws://127.0.0.1:8612", "test", torso_pitch=0.166)
+res6["d"] = no_yaw.step(imgs, q, grip, body, td)["torso_yaw"] is None
+print(f"6d. sans --torso-yaw-index : rotation non pilotée ({res6['d']})")
+by.close(); no_yaw.close()
+ok4 = all(res6.values())
+print("RÉSULTAT 6 :", "OK" if ok4 else f"ÉCHEC {[k for k, v in res6.items() if not v]}")
 br.close()
 srv.shutdown()
-sys.exit(0 if (ok and ok2 and ok3) else 1)
+sys.exit(0 if (ok and ok2 and ok3 and ok4) else 1)

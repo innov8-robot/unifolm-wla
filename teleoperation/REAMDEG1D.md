@@ -149,3 +149,16 @@ Il couvre les repères, la pince et la logique de correction avec un faux serveu
 ```
 Le modèle de valeur a besoin du pas de réussite de chaque démo. Les démos réelles n'en ont pas encore, et il faudra le marquer, par exemple en réenregistrant avec `X` en fin de démo.
 
+
+## Rotation du buste (G1-D, `torso_Joint`)
+
+**Non validé sur le robot.** Le G1-D a un moteur qui tourne le buste à gauche et à droite, au-dessus du tangage. WLA le connaît : c'est le lacet de la taille du G1, déjà présent dans les données d'entraînement d'Unitree.
+
+- **Activer** : `--torso-yaw-index <n>`, l'indice du moteur dans les 35. **HYPOTHÈSE à vérifier** avant tout essai : dans la disposition G1_29, la taille en lacet est à l'indice 12. Bornes : `--torso-yaw-max 0.6` rad et `--torso-yaw-rate 0.5` rad/s.
+- **Commande** : **joystick droit, gauche/droite** (zone morte 0,2). Sans `--motion`, ce joystick ne pilotait rien ; la commande de base enregistrée vaut désormais 0, puisque la base ne bouge pas.
+- **Effet sur les bras** : l'IK est résolue dans un repère lié au torse, donc tourner le buste emporte les bras, comme quand on pivote sur soi-même. La caméra de tête tourne avec.
+- **Mode politique** : la rotation prédite par le modèle est appliquée. Le joystick y ajoute une correction, comptée comme intervention. Pendant une tenue, le buste reste figé.
+- **Enregistrement** : l'angle mesuré est dans `body.qpos`. Les indices sont écrits dans `info.body_layout`, que le convertisseur lit.
+- **Arrêt** : le buste est ramené droit, à vitesse bornée, avant le retour des bras au repos.
+
+**Pourquoi le joystick plutôt que suivre la tête** : regarder ailleurs ferait tourner le robot sans le vouloir, et le casque ne voit pas le bassin de l'opérateur. Le joystick est explicite, se dose facilement, et laisse la tête libre.

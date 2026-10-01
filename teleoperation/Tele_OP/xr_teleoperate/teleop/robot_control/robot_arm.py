@@ -80,6 +80,13 @@ class G1_29_ArmController:
         self._gradual_start_time = None
         self._gradual_time = None
 
+        # rotation du buste G1-D (torso_Joint), pilotée seulement si enable_torso_yaw() est appelé
+        self.torso_yaw_index = None
+        self._torso_yaw_target = 0.0
+        self._torso_yaw_cmd = 0.0
+        self._torso_yaw_max = 0.6
+        self._torso_yaw_rate = 0.5
+
         if self.motion_mode:
             self.lowcmd_publisher = ChannelPublisher(kTopicLowCommand_Motion, hg_LowCmd)
         else:
@@ -177,6 +184,15 @@ class G1_29_ArmController:
                 self.msg.motor_cmd[id].dq = 0
                 self.msg.motor_cmd[id].tau = arm_tauff_target[idx]   
 
+            if self.torso_yaw_index is not None:   # rotation du buste : vitesse bornée vers la cible
+                with self.ctrl_lock:
+                    target = self._torso_yaw_target
+                step = self._torso_yaw_rate * self.control_dt
+                self._torso_yaw_cmd += float(np.clip(target - self._torso_yaw_cmd, -step, step))
+                self.msg.motor_cmd[self.torso_yaw_index].q = self._torso_yaw_cmd
+                self.msg.motor_cmd[self.torso_yaw_index].dq = 0
+                self.msg.motor_cmd[self.torso_yaw_index].tau = 0
+
             self.msg.crc = self.crc.Crc(self.msg)
             self.lowcmd_publisher.Write(self.msg)
 
@@ -190,6 +206,28 @@ class G1_29_ArmController:
             time.sleep(sleep_time)
             # logger_mp.debug(f"arm_velocity_limit:{self.arm_velocity_limit}")
             # logger_mp.debug(f"sleep_time:{sleep_time}")
+
+    def enable_torso_yaw(self, index: int, max_abs: float = 0.6, rate: float = 0.5):
+        """Pilote la rotation du buste (G1-D) sur le moteur ``index`` des 35 : consigne de départ =
+        angle MESURÉ (aucun saut), bornée à ±``max_abs`` rad, vitesse ≤ ``rate`` rad/s."""
+        q0 = float(self.get_current_motor_q()[index])
+        with self.ctrl_lock:
+            self._torso_yaw_max, self._torso_yaw_rate = float(max_abs), float(rate)
+            self._torso_yaw_target = self._torso_yaw_cmd = float(np.clip(q0, -max_abs, max_abs))
+            self.torso_yaw_index = int(index)
+        logger_mp.info(f"[G1_29_ArmController] rotation du buste pilotée : moteur {index}, départ {q0:.3f} rad, "
+                       f"±{max_abs} rad, {rate} rad/s")
+
+    def set_torso_yaw(self, yaw: float):
+        """Cible de rotation du buste (rad), bornée ; sans effet si la rotation n'est pas pilotée."""
+        if self.torso_yaw_index is None:
+            return
+        with self.ctrl_lock:
+            self._torso_yaw_target = float(np.clip(yaw, -self._torso_yaw_max, self._torso_yaw_max))
+
+    def get_torso_yaw_target(self) -> float:
+        with self.ctrl_lock:
+            return self._torso_yaw_target
 
     def ctrl_dual_arm(self, q_target, tauff_target):
         '''Set control target values q & tau of the left and right arm motors.'''

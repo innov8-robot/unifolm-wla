@@ -66,6 +66,7 @@ def compose_xr_image(head_bgr, left_wrist_bgr=None, right_wrist_bgr=None, binocu
     return out
 
 # state transition
+TORSO_STICK_DEADZONE = 0.2  # joystick droit : zone morte de la rotation du buste
 START          = False  # Enable to start robot following VR user motion
 STOP           = False  # Enable to begin system exit procedure
 READY          = False  # Ready to (1) enter START state, (2) enter RECORD_RUNNING state
@@ -144,11 +145,19 @@ if __name__ == '__main__':
     parser.add_argument('--policy-max-speed', type=float, default=0.10, help='vitesse max des cibles (m/s) ; commencer bas')
     parser.add_argument('--torso-pitch-index', type=int, default=13, help='indice du tangage du buste dans les 35 moteurs (HYPOTHÈSE)')
     parser.add_argument('--torso-pitch', type=float, default=None, help='tangage du buste constant (rad), remplace --torso-pitch-index')
+    parser.add_argument('--torso-yaw-index', type=int, default=None,
+                        help='G1-D : indice du moteur de rotation du buste (torso_Joint) dans les 35 moteurs. '
+                             'Active la rotation au joystick droit (gauche/droite). HYPOTHÈSE à vérifier sur le robot')
+    parser.add_argument('--torso-yaw-max', type=float, default=0.6, help='rotation du buste max (rad, ±)')
+    parser.add_argument('--torso-yaw-rate', type=float, default=0.5, help='vitesse de rotation du buste max (rad/s)')
 
     args = parser.parse_args()
     logger_mp.info(f"args: {args}")
     if args.policy_uri and not (args.arm == "G1_29" and args.ee == "dex1" and args.input_mode == "controller" and not args.motion):
         parser.error("--policy-uri demande --arm G1_29 --ee dex1 --input-mode controller, sans --motion")
+    if args.torso_yaw_index is not None and not (args.arm == "G1_29" and args.input_mode == "controller" and not args.motion):
+        parser.error("--torso-yaw-index demande --arm G1_29 --input-mode controller, sans --motion "
+                     "(en --motion, le joystick droit tourne la base)")
     LEFT_TRIGGER_PREV = 0.0
     RIGHT_TRIGGER_PREV = 0.0
 
@@ -217,13 +226,17 @@ if __name__ == '__main__':
                                   advantage=args.policy_advantage, exec_steps=args.policy_exec_steps,
                                   frequency=args.frequency, max_speed=args.policy_max_speed,
                                   torso_pitch_index=args.torso_pitch_index, torso_pitch=args.torso_pitch,
-                                  control_left=not args.right_only)
+                                  control_left=not args.right_only, torso_yaw_index=args.torso_yaw_index)
             logger_mp.info(f"🤖  Mode POLITIQUE : {args.policy_uri} | grip = corriger, gâchette = pince, "
                            f"X gauche = réussi, Y gauche = raté | vitesse max {args.policy_max_speed} m/s")
 
         if args.arm == "G1_29":
             arm_ik = G1_29_ArmIK()
             arm_ctrl = G1_29_ArmController(motion_mode=args.motion, simulation_mode=args.sim)
+            if args.torso_yaw_index is not None:
+                logger_mp.warning(f"rotation du buste sur le moteur {args.torso_yaw_index} : HYPOTHÈSE, vérifier "
+                                  f"l'indice sur le robot avant tout essai (bras dégagés)")
+                arm_ctrl.enable_torso_yaw(args.torso_yaw_index, args.torso_yaw_max, args.torso_yaw_rate)
         elif args.arm == "G1_23":
             arm_ik = G1_23_ArmIK()
             arm_ctrl = G1_23_ArmController(motion_mode=args.motion, simulation_mode=args.sim)
@@ -311,6 +324,7 @@ if __name__ == '__main__':
         policy_failed = False          # erreur du serveur : la politique est suspendue jusqu'au prochain essai
         policy_paused = False          # pas où la politique ne pilote pas : pas enregistrés
         hold_ik = None                 # cibles figées quand la politique ne pilote pas
+        torso_yaw_offset = 0.0         # mode politique : correction de rotation du buste par l'opérateur
         episode_steps = 0
         head_img = left_wrist_img = right_wrist_img = None      # caméra désactivée : reste None
         prev_lX = prev_lY = False
@@ -329,6 +343,8 @@ if __name__ == '__main__':
                                      frequency = args.frequency,
                                      image_size = [_rec_w, _rec_h],
                                      rerun_log = not args.headless)
+            # indices du buste dans body.qpos, lus par le convertisseur (g1d_wla.convert_teleop)
+            recorder.info["body_layout"] = {"torso_pitch": args.torso_pitch_index, "torso_yaw": args.torso_yaw_index}
 
         logger_mp.info("----------------------------------------------------------------")
         logger_mp.info("🟢  Press [r] to start syncing the robot with your movements.")
@@ -377,6 +393,7 @@ if __name__ == '__main__':
                     if recorder.create_episode():
                         RECORD_RUNNING = True
                         episode_steps = 0
+                        torso_yaw_offset = 0.0
                         if bridge is not None:
                             policy_failed = False
                             try:
@@ -522,6 +539,20 @@ if __name__ == '__main__':
                     left_target, right_target = hold_ik["left"], hold_ik["right"]
                     policy_intervention = False
                     policy_paused = True
+            # rotation du buste (G1-D) : joystick droit gauche/droite. Les cibles IK sont dans un repère lié
+            # au torse : tourner le buste emporte les bras (comme quand l'opérateur pivote sur lui-même).
+            if args.torso_yaw_index is not None and START:
+                stick = float(tele_data.right_ctrl_thumbstickValue[0])
+                d_yaw = 0.0 if abs(stick) < TORSO_STICK_DEADZONE else -stick * args.torso_yaw_rate / args.frequency
+                if bridge is not None and res is not None and res.get("torso_yaw") is not None:
+                    # mode politique : rotation prédite + correction de l'opérateur (comptée comme intervention)
+                    torso_yaw_offset = float(np.clip(torso_yaw_offset + d_yaw, -args.torso_yaw_max, args.torso_yaw_max))
+                    arm_ctrl.set_torso_yaw(res["torso_yaw"] + torso_yaw_offset)
+                    if d_yaw != 0.0:
+                        policy_intervention = True
+                elif bridge is None or not policy_paused:
+                    arm_ctrl.set_torso_yaw(arm_ctrl.get_torso_yaw_target() + d_yaw)
+                # politique en tenue : buste figé comme les bras
             sol_q, sol_tauff  = arm_ik.solve_ik(left_target, right_target, current_lr_arm_q, current_lr_arm_dq)
             time_ik_end = time.time()
             logger_mp.debug(f"ik:\t{round(time_ik_end - time_ik_start, 6)}")
@@ -558,9 +589,12 @@ if __name__ == '__main__':
                         left_hand_action = [dual_gripper_action_array[0]]
                         right_hand_action = [dual_gripper_action_array[1]]
                         current_body_state = arm_ctrl.get_current_motor_q().tolist()
-                        current_body_action = [-tele_data.left_ctrl_thumbstickValue[1]  * 0.3,
-                                               -tele_data.left_ctrl_thumbstickValue[0]  * 0.3,
-                                               -tele_data.right_ctrl_thumbstickValue[0] * 0.3]
+                        # commande de base : seulement si ce programme la pilote (--motion). Sinon la base
+                        # ne bouge pas et le joystick droit sert au buste : enregistrer 0 (base à l'arrêt)
+                        current_body_action = ([-tele_data.left_ctrl_thumbstickValue[1]  * 0.3,
+                                                -tele_data.left_ctrl_thumbstickValue[0]  * 0.3,
+                                                -tele_data.right_ctrl_thumbstickValue[0] * 0.3]
+                                               if args.motion else [0.0, 0.0, 0.0])
                 elif (args.ee == "inspire_dfx" or args.ee == "inspire_ftp" or args.ee == "brainco") and args.input_mode == "hand":
                     with dual_hand_data_lock:
                         left_ee_state = dual_hand_state_array[:6]
@@ -691,6 +725,9 @@ if __name__ == '__main__':
         logger_mp.error(traceback.format_exc())
     finally:
         try:
+            if getattr(arm_ctrl, "torso_yaw_index", None) is not None:
+                arm_ctrl.set_torso_yaw(0.0)            # buste ramené droit, vitesse bornée
+                time.sleep(args.torso_yaw_max / args.torso_yaw_rate + 0.5)
             arm_ctrl.ctrl_dual_arm_go_home()
         except Exception as e:
             logger_mp.error(f"Failed to ctrl_dual_arm_go_home: {e}")
