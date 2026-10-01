@@ -22,7 +22,7 @@ sudo systemctl stop teleimager.service
 for i in 1-2.1:1.0 1-2.1:1.1 1-3.1:1.0 1-3.1:1.1 1-3.2:1.0 1-3.2:1.1; do echo $i | sudo tee /sys/bus/usb/drivers/uvcvideo/bind; done
 sudo systemctl start teleimager.service      # attendu : 3 × « is ready », ports 55556/55557/55558
 ```
-(1-2.1 = tête stéréo, 1-3.1 / 1-3.2 = poignets JR0001 / JR0002 ; vérifier avec `lsusb -t`. Si la tête est en échec « UVC probe control », la réinitialiser : `echo 0 | sudo tee /sys/bus/usb/devices/1-2.1/authorized; sleep 2; echo 1 | sudo tee …/authorized`.) Les trois caméras partagent un bus USB 2 : la tête tombe à ~25 images/s.
+(1-2.1 = tête stéréo, 1-3.1 = JR0001 = poignet DROIT, 1-3.2 = JR0002 = poignet GAUCHE ; vérifier avec `lsusb -t`. Si la tête est en échec « UVC probe control », la réinitialiser : `echo 0 | sudo tee /sys/bus/usb/devices/1-2.1/authorized; sleep 2; echo 1 | sudo tee …/authorized`.) Les trois caméras partagent un bus USB 2 : la tête tombe à ~25 images/s.
 
 **Buste** : la rotation est le moteur **12** (vérifié dans mpc_any, kp 180 / kd 2,6). Le **tangage n'est ni commandé ni mesuré** (indices 13/14 à 0,000) : enregistrer avec `--torso-pitch <angle mesuré>`, pas `--torso-pitch-index`. `python read_lowstate.py` lit les 35 moteurs sans rien commander.
 

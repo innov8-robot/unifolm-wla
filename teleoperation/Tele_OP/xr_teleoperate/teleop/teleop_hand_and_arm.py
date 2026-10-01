@@ -68,9 +68,9 @@ def compose_xr_image(head_bgr, left_wrist_bgr=None, right_wrist_bgr=None, binocu
     return out
 
 # state transition
-TORSO_STICK_DEADZONE = 0.2
+TORSO_STICK_DEADZONE = 0.2  # joystick droit : zone morte de la rotation du buste
 CAL_POSE_Q = np.zeros(14)    # posture de calibration (Y) : position zéro du G1 = coudes ~80°, avant-bras vers l'avant
-CAL_MOVE_S = 2.5             # durée du trajet vers la posture de calibration (s)  # joystick droit : zone morte de la rotation du buste
+CAL_MOVE_S = 2.5             # durée du trajet vers la posture de calibration (s)
 START          = False  # Enable to start robot following VR user motion
 STOP           = False  # Enable to begin system exit procedure
 READY          = False  # Ready to (1) enter START state, (2) enter RECORD_RUNNING state
