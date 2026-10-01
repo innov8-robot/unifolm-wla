@@ -166,6 +166,9 @@ if __name__ == '__main__':
                              "au lancement, la colonne descend en butée basse (référence)")
     parser.add_argument('--column-vel', type=float, default=0.3, help='vitesse max de la colonne (unité de la commande, ≤ 0.3)')
     parser.add_argument('--column-max', type=float, default=0.40, help='hauteur max au-dessus de la butée basse (m)')
+    parser.add_argument('--voice', choices=['pc', 'robot', 'off'], default='pc',
+                        help="annonces vocales (enregistrement lancé / sauvegardé / annulé, pause...) : "
+                             "pc = haut-parleurs du PC en français, robot = haut-parleur du robot en anglais")
     parser.add_argument('--timing', action='store_true',
                         help="journal toutes les 2 s : fréquence de boucle, temps d'IK, retard des bras sur la consigne")
     parser.add_argument('--dex1-bus', choices=['internal', 'usb'], default='internal',
@@ -298,6 +301,8 @@ if __name__ == '__main__':
             arm_ik = H1_ArmIK()
             arm_ctrl = H1_ArmController(simulation_mode=args.sim)
 
+        from teleop.utils.announcer import Announcer
+        voice = Announcer(args.voice)
         column = None
         if args.column:
             from teleop.robot_control.g1d_column import ColumnController
@@ -445,6 +450,7 @@ if __name__ == '__main__':
 
         logger_mp.info("---------------------🚀start Tracking🚀-------------------------")
         arm_ctrl.speed_gradual_max()
+        voice.say("Téléopération démarrée", "Teleoperation started")
         frozen_left_arm_q = None  # --right-only: left arm pose captured at first loop iteration
         prev_rA = prev_rB = False  # previous right-controller A/B states, for rising-edge detection
         # main loop. robot start to follow VR user's motion
@@ -472,6 +478,7 @@ if __name__ == '__main__':
                     if recorder.create_episode():
                         RECORD_RUNNING = True
                         episode_steps = 0
+                        voice.say(f"Enregistrement, épisode {recorder.episode_id}", f"Recording episode {recorder.episode_id}")
                         torso_yaw_offset = 0.0
                         if bridge is not None:
                             policy_failed = False
@@ -482,9 +489,11 @@ if __name__ == '__main__':
                                 logger_mp.error(f"🤖  serveur WLA injoignable, politique suspendue : {e}")
                     else:
                         logger_mp.error("Failed to create episode. Recording not started.")
+                        voice.say("Sauvegarde en cours, attendez", "Still saving, wait")
                 else:
                     RECORD_RUNNING = False
                     recorder.save_episode()
+                    voice.say(f"Épisode {recorder.episode_id} sauvegardé", f"Episode {recorder.episode_id} saved")
                     if args.sim:
                         publish_reset_category(1, reset_pose_publisher)
             # cancel/discard the current in-progress recording (controller B button)
@@ -494,6 +503,7 @@ if __name__ == '__main__':
                     RECORD_RUNNING = False
                     recorder.cancel_episode()
                     logger_mp.info("🚫  Recording CANCELLED (episode discarded).")
+                    voice.say("Épisode annulé", "Episode cancelled")
 
             # get xr's tele data
             tele_data = tv_wrapper.get_tele_data()
@@ -518,6 +528,7 @@ if __name__ == '__main__':
                 if cY and not prev_cY:
                     if not cal["paused"]:
                         cal.update(paused=True, t0=time.time(), q0=np.asarray(arm_ctrl.get_current_dual_arm_q()).copy())
+                        voice.say("Pause. Bras à quatre-vingt-dix degrés", "Pause")
                         logger_mp.info("⏸️  Suivi en PAUSE : bras vers la posture de calibration (coudes à 90°). "
                                        "Mettez-vous dans la même posture puis Y pour reprendre.")
                     else:
@@ -529,6 +540,7 @@ if __name__ == '__main__':
                             cal["offset"][s_] = np.asarray(p_robot) - p_hand
                         arm_ik.smooth_filter = WeightedMovingFilter(arm_ik.smooth_filter._weights, 14)
                         cal["paused"] = False
+                        voice.say("Reprise", "Resume")
                         logger_mp.info(f"▶️  Suivi REPRIS, recalé : décalage gauche {np.round(cal['offset']['left'], 3)} m, "
                                        f"droite {np.round(cal['offset']['right'], 3)} m")
                 prev_cY = cY
@@ -540,6 +552,7 @@ if __name__ == '__main__':
                     recorder.set_episode_info({"success_step": episode_steps if ok_ep else None,
                                                "outcome": "success" if ok_ep else "failure"})
                     logger_mp.info(f"🏁  Essai {'RÉUSSI' if ok_ep else 'RATÉ'} au pas {episode_steps}")
+                    voice.say("Essai réussi" if ok_ep else "Essai raté", "Success" if ok_ep else "Failure")
                     RECORD_TOGGLE = True                     # arrête et sauvegarde l'épisode
                 prev_lX, prev_lY = lX, lY
             if (args.ee == "dex3" or args.ee == "inspire_dfx" or args.ee == "inspire_ftp" or args.ee == "brainco") and args.input_mode == "hand":
