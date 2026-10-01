@@ -21,6 +21,7 @@ from teleop.robot_control.robot_arm_ik import G1_29_ArmIK, G1_23_ArmIK, H1_2_Arm
 from teleimager.image_client import ImageClient
 from teleop.utils.episode_writer import EpisodeWriter
 from teleop.utils.ipc import IPC_Server
+from teleop.utils.weighted_moving_filter import WeightedMovingFilter
 from teleop.utils.motion_switcher import MotionSwitcher, LocoClientWrapper
 from sshkeyboard import listen_keyboard, stop_listening
 
@@ -145,6 +146,11 @@ if __name__ == '__main__':
     parser.add_argument('--policy-max-speed', type=float, default=0.10, help='vitesse max des cibles (m/s) ; commencer bas')
     parser.add_argument('--torso-pitch-index', type=int, default=13, help='indice du tangage du buste dans les 35 moteurs (HYPOTHÈSE)')
     parser.add_argument('--torso-pitch', type=float, default=None, help='tangage du buste constant (rad), remplace --torso-pitch-index')
+    parser.add_argument('--ik-smooth', choices=['standard', 'light', 'off'], default='standard',
+                        help="lissage des angles IK : standard = filtre amont 4 pas (~2 pas de retard), light = 2 pas, "
+                             "off = aucun. Moins de lissage = moins de latence, plus de tremblement")
+    parser.add_argument('--record-fps', type=float, default=30.0,
+                        help="fréquence d'ENREGISTREMENT (WLA : 30). Avec --frequency plus haut, un pas sur N est gardé")
     parser.add_argument('--timing', action='store_true',
                         help="journal toutes les 2 s : fréquence de boucle, temps d'IK, retard des bras sur la consigne")
     parser.add_argument('--dex1-bus', choices=['internal', 'usb'], default='internal',
@@ -162,6 +168,11 @@ if __name__ == '__main__':
         parser.error("--policy-uri demande --arm G1_29 --ee dex1 --input-mode controller, sans --motion")
     if args.ee == "dex1" and args.dex1_bus == "internal" and not args.sim and args.arm != "G1_29":
         parser.error("--dex1-bus internal demande --arm G1_29 (commande dans le LowCmd des bras)")
+    if args.policy_uri and abs(args.frequency - 30.0) > 1e-6:
+        parser.error("--policy-uri : les chunks du modèle sont à 30 Hz, garder --frequency 30")
+    RECORD_STRIDE = max(1, int(round(args.frequency / args.record_fps)))
+    if abs(args.frequency / RECORD_STRIDE - args.record_fps) > 0.5:
+        parser.error(f"--frequency {args.frequency} n'est pas un multiple de --record-fps {args.record_fps}")
     if args.torso_yaw_index is not None and not (args.arm == "G1_29" and args.input_mode == "controller" and not args.motion):
         parser.error("--torso-yaw-index demande --arm G1_29 --input-mode controller, sans --motion "
                      "(en --motion, le joystick droit tourne la base)")
@@ -239,6 +250,9 @@ if __name__ == '__main__':
 
         if args.arm == "G1_29":
             arm_ik = G1_29_ArmIK()
+            # latence : le filtre amont (4 pas pondérés 0.4/0.3/0.2/0.1) retarde la consigne d'environ 2 pas
+            arm_ik.smooth_filter = WeightedMovingFilter(
+                np.array({"standard": [0.4, 0.3, 0.2, 0.1], "light": [0.7, 0.3], "off": [1.0]}[args.ik_smooth]), 14)
             arm_ctrl = G1_29_ArmController(motion_mode=args.motion, simulation_mode=args.sim)
             if args.torso_yaw_index is not None:
                 logger_mp.warning(f"rotation du buste sur le moteur {args.torso_yaw_index} : HYPOTHÈSE, vérifier "
@@ -343,6 +357,7 @@ if __name__ == '__main__':
         hold_ik = None                 # cibles figées quand la politique ne pilote pas
         torso_yaw_offset = 0.0         # mode politique : correction de rotation du buste par l'opérateur
         last_noimg_log = 0.0
+        loop_count = -1
         timing_acc = {"n": 0, "ik": 0.0, "lag": 0.0, "dpos": 0.0, "prev_t": None, "t0": time.time()}
         episode_steps = 0
         head_img = left_wrist_img = right_wrist_img = None      # caméra désactivée : reste None
@@ -359,7 +374,7 @@ if __name__ == '__main__':
                                      task_goal = args.task_goal,
                                      task_desc = args.task_desc,
                                      task_steps = args.task_steps,
-                                     frequency = args.frequency,
+                                     frequency = args.record_fps,
                                      image_size = [_rec_w, _rec_h],
                                      rerun_log = not args.headless)
             # indices du buste dans body.qpos, lus par le convertisseur (g1d_wla.convert_teleop)
@@ -605,8 +620,9 @@ if __name__ == '__main__':
                 sol_tauff[:7] = 0.0
             arm_ctrl.ctrl_dual_arm(sol_q, sol_tauff)
 
-            # record data
-            if args.record:
+            # record data (un pas sur RECORD_STRIDE si la boucle tourne plus vite que l'enregistrement)
+            loop_count += 1
+            if args.record and loop_count % RECORD_STRIDE == 0:
                 READY = recorder.is_ready() # now ready to (2) enter RECORD_RUNNING state
                 # dex hand or gripper
                 if args.ee == "dex3" and args.input_mode == "hand":

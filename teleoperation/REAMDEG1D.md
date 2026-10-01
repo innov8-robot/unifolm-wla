@@ -170,3 +170,18 @@ Le modèle de valeur a besoin du pas de réussite de chaque démo. Les démos r�
 - **Arrêt** : le buste est ramené droit, à vitesse bornée, avant le retour des bras au repos.
 
 **Pourquoi le joystick plutôt que suivre la tête** : regarder ailleurs ferait tourner le robot sans le vouloir, et le casque ne voit pas le bassin de l'opérateur. Le joystick est explicite, se dose facilement, et laisse la tête libre.
+
+## Latence (audit du 1er octobre 2026)
+
+Mesuré hors robot (moteurs supposés parfaits) : délai pour suivre 90 % d'un déplacement de 5 cm de la manette.
+
+| Lissage IK (`--ik-smooth`) | 30 Hz (défaut) | 60 Hz (`--frequency 60`) |
+|---|---|---|
+| `standard` (amont, 4 pas) | 133 ms | 67 ms |
+| `light` (2 pas) | 67 ms | **33 ms** |
+| `off` | 67 ms | 33 ms |
+
+- L'IK elle-même prend moins de 1,2 ms : ce n'est pas elle.
+- La partie logicielle se réduit d'environ 100 ms avec `--frequency 60 --ik-smooth light`. L'enregistrement reste à 30 Hz (`--record-fps 30`, un pas sur deux gardé). Le mode politique impose 30 Hz.
+- Le reste vient des moteurs (gains amont kp 80 aux épaules et coudes), du Wi-Fi casque → PC et du casque lui-même. `--timing` affiche toutes les 2 s la fréquence de boucle, le temps d'IK, l'écart consigne-mesure des bras et les sauts de cible (des sauts réguliers = poses de manette qui arrivent par paquets = Wi-Fi).
+- Wi-Fi : pendant une session, `ss -tn sport = :8012` donne l'IP du casque, puis `ping <ip>`. Viser un Wi-Fi 5 GHz dédié.
