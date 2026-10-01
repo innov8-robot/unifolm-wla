@@ -16,6 +16,14 @@ journalctl -u teleimager.service -n 15 --no-pager     # OK si : head_camera / le
 
 **Caméras sur ce robot (1er octobre 2026)** : la tête stéréo stock est publiée par teleimager sur le port **55558**, pour cohabiter avec la RealSense d'un autre projet (`~/rs_stream.py`, ports 55555/55565, à ne pas arrêter). Les caméras de poignet ne sont pas détectées : désactivées dans `cam_config_server.yaml` (sauvegarde `.bak.20261001_174425`), à réactiver une fois rebranchées. La téléop lit la config du serveur (port 60000) et suit le port toute seule.
 
+**Caméras qui disparaissent après un plantage de teleimager** : à l'arrêt, teleimager relâche les caméras et veut recharger le pilote `uvcvideo`, ce qui échoue car la RealSense de l'autre projet l'utilise (« Module uvcvideo is in use »). Les caméras restent alors SANS pilote et teleimager ne les retrouve plus (« Cannot find UVCCamera »). Réparation sur le robot, sans toucher à la RealSense :
+```bash
+sudo systemctl stop teleimager.service
+for i in 1-2.1:1.0 1-2.1:1.1 1-3.1:1.0 1-3.1:1.1 1-3.2:1.0 1-3.2:1.1; do echo $i | sudo tee /sys/bus/usb/drivers/uvcvideo/bind; done
+sudo systemctl start teleimager.service      # attendu : 3 × « is ready », ports 55556/55557/55558
+```
+(1-2.1 = tête stéréo, 1-3.1 / 1-3.2 = poignets JR0001 / JR0002 ; vérifier avec `lsusb -t`. Si la tête est en échec « UVC probe control », la réinitialiser : `echo 0 | sudo tee /sys/bus/usb/devices/1-2.1/authorized; sleep 2; echo 1 | sudo tee …/authorized`.) Les trois caméras partagent un bus USB 2 : la tête tombe à ~25 images/s.
+
 **Buste** : la rotation est le moteur **12** (vérifié dans mpc_any, kp 180 / kd 2,6). Le **tangage n'est ni commandé ni mesuré** (indices 13/14 à 0,000) : enregistrer avec `--torso-pitch <angle mesuré>`, pas `--torso-pitch-index`. `python read_lowstate.py` lit les 35 moteurs sans rien commander.
 
 **Un seul programme sur les moteurs** : les caméras se partagent, pas `rt/lowcmd`.
