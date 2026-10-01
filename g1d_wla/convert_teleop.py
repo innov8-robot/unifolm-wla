@@ -197,9 +197,11 @@ def main() -> None:
         if not args.overwrite:
             raise SystemExit(f"{args.out_dir} existe déjà (--overwrite pour le remplacer)")
         shutil.rmtree(args.out_dir)
-    if args.torso_pitch is None:
-        log.warning("tangage du buste lu à l'indice %d de body.qpos : HYPOTHÈSE à valider sur le robot",
-                    args.torso_pitch_index)
+    if args.torso_pitch is None and not all(
+            (json.loads((p / "data.json").read_text()).get("info", {}).get("body_layout") or {}).get("torso_pitch_const")
+            is not None for p in ep_dirs):
+        log.warning("tangage du buste lu à l'indice %d de body.qpos (pas de tangage constant enregistré) : "
+                    "sur le G1-D, le tangage n'est PAS dans les 35 moteurs -> passer --torso-pitch", args.torso_pitch_index)
 
     fk = {s: ArmFK(s) for s in SIDES}
     # disposition vérifiée sur TOUS les épisodes avant d'écrire quoi que ce soit
