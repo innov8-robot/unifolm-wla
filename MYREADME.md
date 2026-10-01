@@ -4,7 +4,7 @@ Ce fork adapte **UnifoLM-WLA-1.0** d'Unitree au **G1-D** : robot sur base roulan
 
 - **Dépôt** : `git@github.com:innov8-robot/unifolm-wla.git`, fork **public** de `unitreerobotics/unifolm-wla`.
 - **Branche de travail** : `g1d-port`. `main` suit le dépôt d'Unitree.
-- **Dernière mise à jour** : 29 septembre 2026.
+- **Dernière mise à jour** : 1er octobre 2026.
 
 ---
 
@@ -39,6 +39,7 @@ Ce fork adapte **UnifoLM-WLA-1.0** d'Unitree au **G1-D** : robot sur base roulan
 | Validation de toute la chaîne en sim, tâche cube | **Fait** : 23/30 après fine-tuning, contre 0/20 en zero-shot |
 | Tâche Novares en sim (prise peinte) | **Fait** : 27/30 avec 50 démos, 22/30 avec 25, 27/30 avec 10 |
 | Boucle RECAP / Delta-0 | Brique implémentée, audit corrigé. 1re itération en sim : **pas de gain** (14/30 contre 18/30 pour la référence), modèle de valeur trop faible |
+| Empilement Novares en sim (pièces à plat, prise par le côté) | Expert 30 % ; modèle **0/30** (25, 100 démos, 12 000 pas, 1 itération DAgger) : l'expert est le goulot |
 | Mode politique avec correction en delta dans la téléop | Fait, testé hors robot, **non validé sur le robot** |
 | Rotation du buste G1-D (sim, conversion, téléop au joystick droit) | Fait, testé hors robot ; **indice moteur à vérifier** |
 | Fine-tuning sur de vraies démos | Recette prête et validée en sim |
@@ -63,6 +64,8 @@ Par ordre de priorité. Cocher au fur et à mesure.
 - [x] **Améliorer la vitesse et réduire le nombre de démos, en sim** : chunks entiers, 28/30 en 151 pas au lieu de 222. Real-time chunking ajouté, avec raccord doux : 25/30 en 151 pas en replanifiant tous les 10 pas. **10 démos suffisent** pour 25/30, et 25 démos donnent 30/30.
 - [x] **Tâche Novares en sim** : prise peinte de mpc_any. 50 démos : **27/30**, à la vitesse de l'expert. 25 démos : 22/30. 10 démos : 27/30.
 - [ ] **Boucle RECAP / Delta-0 (amélioration par essais et corrections)** : brique implémentée, auditée et corrigée. 1re itération en sim dans la zone « à gauche » (`sim/experiments/queue_recap.sh`) : référence 18/30, RECAP 14/30, témoin sans avantage 13/30. Pas d'effet du conditionnement, et ajouter les rollouts dégrade. Cause probable : modèle de valeur qui apprend par cœur (erreur 128 pas hors entraînement). Pistes : plus de rollouts, valeur plus simple (succès/échec de l'épisode), fine-tuning depuis n10 plutôt que depuis Base. Voir section 15 des constats.
+- [ ] **Empilement Novares en sim** : scène corrigée (pièces à plat, prise par le côté), expert à 30 %. Modèle 0/30 dans tous les essais : 25 démos, 100 démos, 25 démos × 12 000 pas (boucle ouverte 8,3 mm), 1 itération DAgger. **Prochaine étape : fiabiliser l'expert** (pièce qui glisse, reprise depuis un état quelconque), puis évaluer sur des placements que l'expert réussit. Voir section 14 des constats.
+- [ ] **Vérifier sur le robot l'indice du moteur de rotation du buste** (hypothèse 12) avant d'utiliser `--torso-yaw-index`. Voir section 16 des constats.
 - [ ] **Essayer le mode politique avec corrections sur le robot** : `--policy-uri` dans la téléop, procédure dans `teleoperation/REAMDEG1D.md`. Corrigé après audit de sécurité et testé hors robot. Premier essai : vitesse bridée et arrêt d'urgence à portée.
 - [ ] **Enregistrer, puis fine-tuner** : la recette est prête et testée sur `mon_test`. Elle tourne à environ 1,7 s par pas sur la RTX 5090. Le correctif du projecteur gelé est **vérifié** : 1 397 M paramètres entraînables, soit la tête DiT plus les 6,87 M du projecteur. Reste à enregistrer de vraies démos iso, voir les points précédents.
 
@@ -90,7 +93,8 @@ unifolm-wla/
 │   ├── smoke.py               # 22 vérifications de bout en bout
 │   ├── cube_task.py, novares_task.py, stack_task.py, sim_tasks.py   # tâches et experts
 │   ├── record_sim_demos.py, recap_rollouts.py, wla_client.py        # démos, rollouts, évaluation
-│   └── experiments/           # files de travaux (queue_novares.sh, queue_recap.sh)
+│   ├── dagger_corrections.py, open_loop_check.py                    # corrections DAgger, contrôle en boucle ouverte
+│   └── experiments/           # files de travaux (queue_novares, queue_recap, queue_stack, queue_dagger)
 └── teleoperation/             # notre téléop, xr_teleoperate personnalisé
     ├── setup_env.sh           # crée l'env conda g1d_teleop
     ├── REAMDEG1D.md           # démarrage téléop pas à pas
@@ -155,7 +159,7 @@ sim.go_ready()                  # buste penché à 0.166 rad, bras aux angles de
 
 imgs = sim.render_all()         # head_left, cam_wrist_left, cam_wrist_right : RGB 640×480
 T_ee = sim.ee_pose_wla("left")  # effecteur WLA dans la base WLA : ce que le modèle attend
-lb   = sim.lower_body_wla()     # jambes G1 debout + taille [0, 0, tangage du buste]
+lb   = sim.lower_body_wla()     # jambes G1 debout + taille G1 équivalente au buste (tangage, lacet)
 sim.track_ee_wla("left", T)     # applique une pose effecteur WLA absolue
 sim.set_gripper("left", 1.0)    # 0 = ouverte, 1 = fermée
 sim.step()                      # 1 pas à 30 Hz
@@ -247,7 +251,7 @@ Ce qu'il produit, détail en section 10 de `docs/G1D_Constats.md` :
 - **Effecteur, état** : FK des angles **mesurés** dans la base WLA, avec l'effecteur WLA, en euler `xyz`.
 - **Effecteur, action** : FK des angles **commandés**, même repère.
 - **Jambes** : posture debout du G1, la constante `G1_STANDING_LEGS` de la sim.
-- **Taille** : `[0, 0, tangage du buste]`.
+- **Taille** : taille G1 de même orientation de torse que le buste G1-D, `waist_from_torso(tangage, lacet)` ; `[0, 0, tangage]` buste non tourné.
 - **Commande de base** : vitesses de la base enregistrées, et hauteur de bassin **constante**, `G1_BASE_HEIGHT` = 0,732 m ou `--base-height`. Elle ne dépend pas encore de la colonne.
 - **Caméras** : `head_stereo_left` pour l'œil gauche brut, `head_stereo_right`, `wrist_left` et `wrist_right`. Pour la sim, qui n'a qu'un œil, seulement `head_stereo_left` et les poignets. La disposition est déduite de l'en-tête. Pour la téléop `--right-only`, passer `--layout right-only`.
 - **Pince** : unité Dex1, copiée telle quelle.
@@ -374,7 +378,7 @@ MUJOCO_GL=egl $SIMPY sim/wla_client.py --scene novares --instruction "pick up th
 - **Tâche plus dure** : elle s'apprend aussi bien que le cube. Avec 50 démos, le modèle réussit 9 fois sur 10, **à la vitesse de l'expert**.
 - **Nombre de démos** : 10 démos font aussi bien que 50, à 27/30. Le creux à 25 démos, 22/30, est probablement du bruit : un seul entraînement par configuration, et 30 essais.
 - **Hors distribution** : le modèle à 10 démos généralise mal dans certaines zones décalées. Sur 15 essais : 30/30 à 4–7 cm plus loin, mais **7/15 à 4–7 cm à gauche**, 11/15 pièce tournée de 26 à 46°, et 14/15 à 5–8 cm à droite.
-- **File automatique** : `sim/experiments/queue_novares.sh`, dont une copie tourne dans `playground/`, hors git. Elle enchaîne entraînement et évaluation pour 50, 25 puis 10 démos. Journal : `playground/queue_logs/queue.log`.
+- **File automatique** : `sim/experiments/queue_novares.sh`. Elle enchaîne entraînement et évaluation pour 50, 25 puis 10 démos. Journal : `playground/queue_logs/queue.log`.
 
 ### Fine-tuning
 

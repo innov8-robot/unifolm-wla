@@ -715,7 +715,7 @@ Principe publié par Physical Intelligence, π*0.6 avec RECAP, fin 2025, et repr
 | Écriture d'épisode | `sim/sim_episode_writer.py` | Partagé par les démos et les rollouts. `info.success_step` et `info.outcome` sont ajoutés |
 | Tâche de test | `sim/sim_tasks.py`, tâche `novares_left` | Pièce 4 à 7 cm à gauche de la zone d'entraînement : c'est l'équivalent de la « cuisine inversée » de Delta-0. La zone « plus loin » (`novares_shift`) a été écartée : le modèle à 10 démos y réussit déjà 30 / 30, contre 7 / 15 à gauche |
 
-### Expérience préparée
+### Déroulé de l'expérience
 
 `sim/experiments/queue_recap.sh` enchaîne ces étapes (lancée le 29 septembre à 23 h 07) :
 1. **Référence** : la politique à 10 démos, évaluée dans la zone décalée et dans la zone d'origine.
@@ -797,3 +797,36 @@ La comparaison entre les étapes 5 et 6 dira si le gain vient du conditionnement
 | 0,5 rad | 6 / 60 |
 
 Ses échecs viennent surtout de la pièce perdue ou tombée (9 / 30) et du mauvais emboîtement (6 / 30) ; les dépôts hors de portée (5 / 30) ne diminuent pas avec la rotation. Elle reste à 0 par défaut pour l'expert.
+
+---
+
+## 17. Audit du 1er octobre 2026
+
+Quatre relectures indépendantes (téléop, données et modèle, sim, scripts et docs). Constats vérifiés dans le code, puis corrigés (commits « corrections de l'audit du 1/10 »).
+
+**[VÉRIFIÉ] Corrigé, téléop (vrai robot)** :
+- image de tête absente pendant un enregistrement : plantage (`bgr` None), puis retour au repos des bras à 20–30 rad/s. Désormais le pas est sauté, et l'arrêt ramène les bras à 0,5 rad/s ;
+- connexion au serveur WLA déplacée **avant** le mode debug ;
+- cible du mode politique bornée à 5 cm / 0,3 rad de la pose mesurée : un bras bloqué ne voit plus sa consigne avancer sans fin ;
+- délai de réponse dépassé : la réponse tardive décalait tous les échanges suivants d'un message ; la connexion est maintenant fermée et rouverte ;
+- rotation du buste : indice validé, départ refusé si l'angle mesuré dépasse la borne, consigne tenue à 0,15 rad de la mesure, buste figé en tenue, vitesse bornée en mode politique pour respecter `--policy-max-speed`, correction comptée comme intervention tant qu'elle est non nulle ;
+- `--right-only` : la pince gauche se fermait, elle est maintenant figée ; `--sim` avec politique : mêmes filtres d'enregistrement ; `info.body_layout` porte le tangage constant.
+
+**[VÉRIFIÉ] Corrigé, données et RECAP** :
+- **étiquetage RECAP faux en fin de tâche** : un morceau devait gagner au moins 15 pas, alors qu'il en restait moins. Les ~15 pas avant la réussite et toute la tenue étaient négatifs, ce qui apprenait au modèle « positif » à éviter de finir. Le gain attendu est maintenant plafonné par les pas restants. Cette erreur a pu peser sur le résultat de la 1re itération RECAP (§15) ;
+- `advantage_key` absente du dataset : erreur au lieu d'un entraînement silencieusement sans condition ;
+- cache Arrow indexé aussi par le contenu des parquet ;
+- convertisseur : tangage constant enregistré prioritaire, valeurs `None` de `body_layout` ignorées ;
+- plis du modèle de valeur retrouvés par chemin absolu.
+
+**[VÉRIFIÉ] Corrigé, sim et files** :
+- pièce tenue détectée par contacts (le seuil de 3 cm était faux près de la pose emboîtée) ;
+- découpe DAgger : les 10 pas de politique gardés avant la reprise étaient l'échec lui-même (pince fermée à vide dans 8 corrections sur 11). `--context 0` par défaut. Cette erreur a pu peser sur l'itération DAgger 1 ;
+- boucle ouverte : la taille envoyée était [0, 0, 0] au lieu de la taille enregistrée (le chiffre de 8,3 mm reste valable en comparaison, mais l'observation n'était pas exacte) ;
+- verrou GPU atomique, libéré seulement par la file qui l'a pris ; serveur tué à l'arrêt de la file Novares ; rollouts conservés si leur découpage échoue.
+
+**[INCONNU] Non corrigé, à décider** :
+- `rtc_soft` (raccord doux du real-time chunking, code de l'autre session) remplit la zone de raccord avec le dernier pas imposé répété, donc « rester immobile » : le robot ralentirait à chaque chunk. À revoir avec l'auteur ;
+- `_rtc_prev` du serveur est partagé entre connexions (les clients actuels envoient bien `policy_reset`) ;
+- les critères de réussite diffèrent encore légèrement entre l'expert, l'enregistreur, le client et les rollouts ;
+- **l'évaluation de l'empilement tire des placements que l'expert lui-même réussit rarement** (4 / 30 sur les placements de l'évaluation) : le 0 / 30 du modèle se lit par rapport à ce plafond.

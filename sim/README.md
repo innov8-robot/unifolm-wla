@@ -22,8 +22,10 @@ sim/
 ├── cube_task.py, novares_task.py, stack_task.py   # tâches + experts scriptés
 ├── record_sim_demos.py, sim_episode_writer.py     # démos au format xr_teleoperate
 ├── wla_client.py          # client du serveur WLA (évaluation en boucle fermée)
-├── recap_rollouts.py      # rollouts RECAP avec opérateur simulé
-└── experiments/           # files de travaux (queue_novares.sh, queue_recap.sh)
+├── recap_rollouts.py      # rollouts RECAP / DAgger avec opérateur simulé
+├── dagger_corrections.py  # garde les corrections réussies des rollouts
+├── open_loop_check.py     # le modèle reproduit-il ses démos ? (boucle ouverte)
+└── experiments/           # files de travaux (queue_novares, queue_recap, queue_stack, queue_dagger)
 ```
 
 ## Lancer
@@ -46,7 +48,7 @@ imgs = sim.render_all()        # {"head_left", "cam_wrist_left", "cam_wrist_righ
 
 # Ce que le modèle WLA attend, dans SES repères
 T_ee = sim.ee_pose_wla("left") # 4x4 effecteur WLA dans la base WLA (bassin virtuel du G1)
-lb = sim.lower_body_wla()      # (15) jambes G1 debout + taille [0, 0, tangage du buste]
+lb = sim.lower_body_wla()      # (15) jambes G1 debout + taille G1 équivalente (tangage, lacet du buste)
 sim.track_ee_wla("left", T)    # applique une pose effecteur WLA absolue (sortie du serveur)
 
 # Bas niveau, repère monde MuJoCo
