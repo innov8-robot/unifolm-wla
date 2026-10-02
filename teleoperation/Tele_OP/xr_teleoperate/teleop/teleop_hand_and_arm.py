@@ -746,14 +746,20 @@ if __name__ == '__main__':
                 tm = timing_acc
                 tm["n"] += 1
                 tm["ik"] += time_ik_end - time_ik_start
+                tm["ik_max"] = max(tm.get("ik_max", 0.0), time_ik_end - time_ik_start)
+                now_ = time.time()
+                if tm.get("t_prev") is not None:
+                    tm["dt_max"] = max(tm.get("dt_max", 0.0), now_ - tm["t_prev"])
+                tm["t_prev"] = now_
                 tm["lag"] = max(tm["lag"], float(np.max(np.abs(np.asarray(sol_q) - np.asarray(current_lr_arm_q)))))
                 tm["dpos"] = max(tm["dpos"], float(np.linalg.norm(np.asarray(right_target)[:3, 3] - tm["prev_t"]))) if tm["prev_t"] is not None else 0.0
                 tm["prev_t"] = np.asarray(right_target)[:3, 3].copy()
                 if time.time() - tm["t0"] > 2.0:
                     dt = time.time() - tm["t0"]
-                    logger_mp.info(f"[timing] boucle {tm['n']/dt:.1f} Hz | IK {1000*tm['ik']/max(tm['n'],1):.1f} ms | "
+                    logger_mp.info(f"[timing] boucle {tm['n']/dt:.1f} Hz, période max {1000*tm.get('dt_max', 0):.0f} ms | "
+                                   f"IK {1000*tm['ik']/max(tm['n'],1):.1f} ms (max {1000*tm.get('ik_max', 0):.0f}) | "
                                    f"écart max consigne-mesure bras {tm['lag']:.3f} rad | saut max cible main D {1000*tm['dpos']:.0f} mm/pas")
-                    timing_acc.update(n=0, ik=0.0, lag=0.0, dpos=0.0, t0=time.time())
+                    timing_acc.update(n=0, ik=0.0, lag=0.0, dpos=0.0, t0=time.time(), ik_max=0.0, dt_max=0.0)
             logger_mp.debug(f"ik:\t{round(time_ik_end - time_ik_start, 6)}")
             # --right-only: hold the left arm at its captured pose (position-held, no feedforward)
             if args.right_only and frozen_left_arm_q is not None:
