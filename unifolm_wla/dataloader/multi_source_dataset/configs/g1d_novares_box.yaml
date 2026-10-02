@@ -21,7 +21,7 @@ image_roles:
 
 datasets:
   - name: "UnifoLM_G1_Dex1"
-    data_path: "g1d_novares_box/"   # 55 démos réelles, robot G1-D (téléop du 1er octobre 2026)
+    data_path: "g1d_novares_box/"   # 121 démos réelles, robot G1-D (téléop du 1er octobre 2026)
     enabled: true
     weight: 1.0
     robot_type: "unitree"

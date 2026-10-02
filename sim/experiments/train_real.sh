@@ -12,6 +12,7 @@ CFG_DIR=unifolm_wla/dataloader/multi_source_dataset/configs
 STEPS=${STEPS:-15000}
 SAVE_EVERY=${SAVE_EVERY:-2500}      # sauvegarde reprenable tous les N pas (seule la dernière est gardée)
 RESUME=${RESUME:-0}                 # RESUME=1 : reprendre au dernier checkpoints/steps_N du run
+INIT=${INIT:-}                      # INIT=<model.safetensors> : partir de ce modèle au lieu du modèle Base
 say() { echo "[$(date '+%F %T')] $*"; }
 OWN=0
 cleanup() { [[ $OWN == 1 ]] && rm -f "$BUSY"; }
@@ -30,6 +31,11 @@ if [[ $RESUME == 1 ]]; then
 else
     rm -rf "playground/Checkpoints/$RUN" playground/cache/arrow_cache
     EXTRA=()
+    if [[ -n $INIT ]]; then
+        [[ -f $INIT ]] || { say "ARRÊT : INIT introuvable ($INIT)"; exit 1; }
+        EXTRA=(--trainer.pretrained_checkpoint "$INIT")
+        say "départ depuis $INIT"
+    fi
 fi
 run_id=$RUN bash examples/unifolm_wla/train_files/run_finetune_g1d.sh \
     --datasets.vla_data.data_config_path $CFG_DIR/$CFG \
