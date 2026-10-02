@@ -528,14 +528,18 @@ if __name__ == '__main__':
             # (q = 0 : bras le long du corps, avant-bras vers l'avant, coude ~80°) ; second appui = REPRISE
             # avec recalage : la pose actuelle des manettes devient celle des mains du robot (pas de saut)
             # mode politique : Y = garde seulement HORS essai (pendant un essai, Y = essai raté, plus bas)
+            # état de Y suivi à CHAQUE tour (sinon le Y qui termine un essai « raté » était vu, au tour suivant,
+            # comme un nouvel appui et mettait aussi les bras en garde)
+            cY = bool(tele_data.left_ctrl_bButton) if args.input_mode == "controller" else False
+            y_edge = cY and not prev_cY
+            prev_cY = cY
             if (bridge is None or not RECORD_RUNNING) and args.input_mode == "controller" and START and args.arm == "G1_29":
-                cY = bool(tele_data.left_ctrl_bButton)
-                if cY and not prev_cY and bridge is not None and cal["paused"]:
+                if y_edge and bridge is not None and cal["paused"]:
                     cal["paused"] = False                  # mode politique : fin de garde, tenue à la pose atteinte
                     hold_ik = None
                     voice.say("Garde relâchée", "Released")
                     logger_mp.info("▶️  Garde relâchée : les bras tiennent leur pose")
-                elif cY and not prev_cY:
+                elif y_edge:
                     if not cal["paused"]:
                         cal.update(paused=True, t0=time.time(), q0=np.asarray(arm_ctrl.get_current_dual_arm_q()).copy())
                         voice.say("Pause. Bras à quatre-vingt-dix degrés", "Pause")
@@ -553,7 +557,6 @@ if __name__ == '__main__':
                         voice.say("Reprise", "Resume")
                         logger_mp.info(f"▶️  Suivi REPRIS, recalé : décalage gauche {np.round(cal['offset']['left'], 3)} m, "
                                        f"droite {np.round(cal['offset']['right'], 3)} m")
-                prev_cY = cY
             if bridge is not None and args.record and START:
                 lX, lY = bool(tele_data.left_ctrl_aButton), bool(tele_data.left_ctrl_bButton)
                 if RECORD_RUNNING and not RECORD_CANCEL and not tele_data.right_ctrl_bButton \
