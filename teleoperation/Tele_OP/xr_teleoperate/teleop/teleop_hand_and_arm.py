@@ -306,7 +306,11 @@ if __name__ == '__main__':
             arm_ctrl = H1_ArmController(simulation_mode=args.sim)
 
         from teleop.utils.announcer import Announcer
+        from teleop.utils.camera_watch import CameraWatch
         voice = Announcer(args.voice)
+        cam_names = [n for n, k in (("tête", "head_camera"), ("poignet gauche", "left_wrist_camera"),
+                                    ("poignet droit", "right_wrist_camera")) if camera_config[k]['enable_zmq']]
+        cam_watch = CameraWatch(cam_names, voice)
         column = None
         if args.column:
             from teleop.robot_control.g1d_column import ColumnController
@@ -445,6 +449,9 @@ if __name__ == '__main__':
         READY = True                  # now ready to (1) enter START state
         while not START and not STOP: # wait for start or stop signal.
             time.sleep(0.033)
+            cam_watch.update({n: g() for n, g in (("tête", img_client.get_head_frame),
+                                                  ("poignet gauche", img_client.get_left_wrist_frame),
+                                                  ("poignet droit", img_client.get_right_wrist_frame)) if n in cam_names})
             if camera_config['head_camera']['enable_zmq'] and xr_need_local_img:
                 head_img = img_client.get_head_frame()
                 if head_img.bgr is not None:
@@ -461,15 +468,16 @@ if __name__ == '__main__':
         while not STOP:
             start_time = time.time()
             # get image
+            # caméras actives lues à CHAQUE tour (surveillance : casque en pass-through, on ne les voit pas)
             if camera_config['head_camera']['enable_zmq']:
-                if args.record or xr_need_local_img or bridge is not None:
-                    head_img = img_client.get_head_frame()
+                head_img = img_client.get_head_frame()
             if camera_config['left_wrist_camera']['enable_zmq']:
-                if args.record or (args.wrist_pip and xr_need_local_img) or bridge is not None:
-                    left_wrist_img = img_client.get_left_wrist_frame()
+                left_wrist_img = img_client.get_left_wrist_frame()
             if camera_config['right_wrist_camera']['enable_zmq']:
-                if args.record or (args.wrist_pip and xr_need_local_img) or bridge is not None:
-                    right_wrist_img = img_client.get_right_wrist_frame()
+                right_wrist_img = img_client.get_right_wrist_frame()
+            cam_watch.update({n: f for n, f in (("tête", head_img), ("poignet gauche", left_wrist_img),
+                                                ("poignet droit", right_wrist_img)) if n in cam_names},
+                             recording=RECORD_RUNNING)
             if xr_need_local_img and camera_config['head_camera']['enable_zmq'] and head_img.bgr is not None:
                 lw = left_wrist_img.bgr  if (args.wrist_pip and camera_config['left_wrist_camera']['enable_zmq'])  else None
                 rw = right_wrist_img.bgr if (args.wrist_pip and camera_config['right_wrist_camera']['enable_zmq']) else None
