@@ -186,10 +186,11 @@ if __name__ == '__main__':
         parser.error("--policy-uri demande --arm G1_29 --ee dex1 --input-mode controller, sans --motion")
     if args.ee == "dex1" and args.dex1_bus == "internal" and not args.sim and args.arm != "G1_29":
         parser.error("--dex1-bus internal demande --arm G1_29 (commande dans le LowCmd des bras)")
-    if args.column and (args.motion or args.policy_uri or args.input_mode != "controller"):
-        parser.error("--column demande --input-mode controller, sans --motion ni --policy-uri")
-    if args.base and (args.motion or args.policy_uri or args.input_mode != "controller"):
-        parser.error("--base demande --input-mode controller, sans --motion ni --policy-uri")
+    # base / colonne : en mode politique, utilisables seulement ENTRE deux essais (placement du robot)
+    if args.column and (args.motion or args.input_mode != "controller"):
+        parser.error("--column demande --input-mode controller, sans --motion")
+    if args.base and (args.motion or args.input_mode != "controller"):
+        parser.error("--base demande --input-mode controller, sans --motion")
     if args.policy_uri and abs(args.frequency - 30.0) > 1e-6:
         parser.error("--policy-uri : les chunks du modèle sont à 30 Hz, garder --frequency 30")
     RECORD_STRIDE = max(1, int(round(args.frequency / args.record_fps)))
@@ -481,6 +482,9 @@ if __name__ == '__main__':
                         voice.say(f"Enregistrement, épisode {recorder.episode_id}", f"Recording episode {recorder.episode_id}")
                         torso_yaw_offset = 0.0
                         if bridge is not None:
+                            if cal["paused"]:              # essai lancé depuis la garde : le modèle part de là
+                                cal["paused"] = False
+                                hold_ik = None
                             policy_failed = False
                             try:
                                 bridge.reset()
@@ -523,9 +527,15 @@ if __name__ == '__main__':
             # Y gauche (téléop, hors mode politique) : PAUSE du suivi -> bras vers la posture de calibration
             # (q = 0 : bras le long du corps, avant-bras vers l'avant, coude ~80°) ; second appui = REPRISE
             # avec recalage : la pose actuelle des manettes devient celle des mains du robot (pas de saut)
-            if bridge is None and args.input_mode == "controller" and START and args.arm == "G1_29":
+            # mode politique : Y = garde seulement HORS essai (pendant un essai, Y = essai raté, plus bas)
+            if (bridge is None or not RECORD_RUNNING) and args.input_mode == "controller" and START and args.arm == "G1_29":
                 cY = bool(tele_data.left_ctrl_bButton)
-                if cY and not prev_cY:
+                if cY and not prev_cY and bridge is not None and cal["paused"]:
+                    cal["paused"] = False                  # mode politique : fin de garde, tenue à la pose atteinte
+                    hold_ik = None
+                    voice.say("Garde relâchée", "Released")
+                    logger_mp.info("▶️  Garde relâchée : les bras tiennent leur pose")
+                elif cY and not prev_cY:
                     if not cal["paused"]:
                         cal.update(paused=True, t0=time.time(), q0=np.asarray(arm_ctrl.get_current_dual_arm_q()).copy())
                         voice.say("Pause. Bras à quatre-vingt-dix degrés", "Pause")
@@ -677,7 +687,7 @@ if __name__ == '__main__':
                 fresh = time.time() - base_last["t"] < BASE_STALE_S
                 lx, ly = (float(v) for v in tele_data.left_ctrl_thumbstickValue[:2])
                 dz = lambda v: 0.0 if abs(v) < BASE_STICK_DEADZONE else v
-                if START and fresh and not cal["paused"]:
+                if START and fresh and not cal["paused"] and not (bridge is not None and RECORD_RUNNING):
                     base_cmd = base.set(-dz(ly) * args.base_max_vx, -dz(lx) * args.base_max_vyaw)
                 else:
                     base_cmd = base.set(0.0, 0.0)
@@ -690,7 +700,8 @@ if __name__ == '__main__':
                     column_last.update(pose=pose_r.copy(), t=time.time())
                 rx, ry = (float(v) for v in tele_data.right_ctrl_thumbstickValue[:2])
                 vert = ry if (abs(ry) > abs(rx) and abs(ry) >= COLUMN_STICK_DEADZONE) else 0.0
-                if START and time.time() - column_last["t"] < BASE_STALE_S and not cal["paused"]:
+                if START and time.time() - column_last["t"] < BASE_STALE_S and not cal["paused"] \
+                        and not (bridge is not None and RECORD_RUNNING):
                     column_v = column.set_velocity(-vert * args.column_vel)    # joystick vers le haut = monter
                 else:
                     column_v = column.set_velocity(0.0)
