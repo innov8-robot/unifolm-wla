@@ -16,6 +16,8 @@ journalctl -u teleimager.service -n 15 --no-pager     # OK si : head_camera / le
 
 **Caméras sur ce robot (1er octobre 2026)** : la tête stéréo stock est publiée par teleimager sur le port **55558**, pour cohabiter avec la RealSense d'un autre projet (`~/rs_stream.py`, ports 55555/55565, à ne pas arrêter). Les caméras de poignet ne sont pas détectées : désactivées dans `cam_config_server.yaml` (sauvegarde `.bak.20261001_174425`), à réactiver une fois rebranchées. La téléop lit la config du serveur (port 60000) et suit le port toute seule.
 
+**Réglé automatiquement depuis le 2 octobre 2026** : le robot exécute `/usr/local/bin/g1d_cam_rebind.sh` avant chaque démarrage de teleimager (drop-in `/etc/systemd/system/teleimager.service.d/rebind.conf`, copies dans `teleoperation/robot_config/`). Le script rattache uvcvideo aux 3 caméras par numéro de série (tête 01.00.00, poignets JR0001 / JR0002), sans toucher à la RealSense. Retrait : supprimer ces deux fichiers puis `sudo systemctl daemon-reload`. La procédure manuelle ci-dessous reste valable en dépannage.
+
 **Caméras qui disparaissent après un plantage de teleimager** : à l'arrêt, teleimager relâche les caméras et veut recharger le pilote `uvcvideo`, ce qui échoue car la RealSense de l'autre projet l'utilise (« Module uvcvideo is in use »). Les caméras restent alors SANS pilote et teleimager ne les retrouve plus (« Cannot find UVCCamera »). Réparation sur le robot, sans toucher à la RealSense :
 ```bash
 sudo systemctl stop teleimager.service
