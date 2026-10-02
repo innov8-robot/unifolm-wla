@@ -53,6 +53,7 @@ Ce fork adapte **UnifoLM-WLA-1.0** d'Unitree au **G1-D** : robot sur base roulan
   ~/Documents/project/manip/unifolm-wla/studio.sh        # depuis n'importe quel dossier (défaut : teleop/utils/data)
   ```
   Raccourcis : Espace lecture · ←/→ pas à pas · Maj+←/→ ±1 s · ↑/↓ épisode · I / O rognage · Suppr supprimer.
+  Mode d'emploi complet : [dataset_studio/README.md](dataset_studio/README.md).
 
 ### TODO
 
@@ -484,3 +485,24 @@ Référence complète : section 9 de `docs/G1D_Constats.md`.
 
 python teleop_hand_and_arm.py --network-interface=enx0c3796e0bc5b --img-server-ip=192.168.123.164 --input-mode=controller --arm=G1_29 --ee=dex1 --torso-pitch 0.166  --frequency 60 --ik-smooth light --timing --torso-yaw-index 12 --torso-yaw-max 1.0 --torso-yaw-rate 0.5 --base --column --record --task-name=napkin --task-goal="fold a green napkin"
 
+
+
+Voici les deux commandes, à copier telles quelles, chacune sur une seule ligne.
+
+**Terminal 1 : le serveur du modèle**
+```bash
+cd ~/Documents/project/manip/unifolm-wla && env -i HOME=$HOME PATH=/usr/bin:/bin LANG=C.UTF-8 .venv/bin/python -m model_server.action_server_wbc_msgpack_unitree --ckpt_path playground/Checkpoints/g1d_novares_box/final_model/model.safetensors --unnorm_key UnifoLM_G1_Dex1 --port 8600
+```
+Attendez **« server listening on »**, environ 1 minute pour charger le modèle. Laissez ce terminal ouvert.
+
+**Terminal 2 : la téléop en mode politique**
+```bash
+conda activate g1d_teleop && cd ~/Documents/project/manip/unifolm-wla/teleoperation/Tele_OP/xr_teleoperate/teleop && adb reverse tcp:8012 tcp:8012 && python teleop_hand_and_arm.py --network-interface=enx0c3796e0bc5b --img-server-ip=192.168.123.164 --input-mode=controller --arm=G1_29 --ee=dex1 --torso-pitch 0.166 --policy-uri ws://127.0.0.1:8600 --policy-instruction "pick up the black object and put it inside a box" --policy-max-speed 1 --record --task-name=novares_box_policy
+```
+
+**Ensuite**
+1. Dans le casque, ouvrez `https://vuer.ai/?ws=wss://localhost:8012&grid=False`, puis Virtual Reality.
+2. Tapez **`r`** dans le terminal 2.
+3. **A** droit : le modèle prend la main.
+4. **X** gauche si l'essai est réussi, **Y** gauche s'il est raté, **B** droit pour l'annuler. **Grip** maintenu pour corriger.
+5. **`q`** pour quitter. Arrêtez ensuite le serveur avec Ctrl+C dans le terminal 1.
