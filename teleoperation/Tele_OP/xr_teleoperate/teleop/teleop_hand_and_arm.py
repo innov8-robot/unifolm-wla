@@ -169,6 +169,8 @@ if __name__ == '__main__':
     parser.add_argument('--voice', choices=['pc', 'robot', 'off'], default='pc',
                         help="annonces vocales (enregistrement lancé / sauvegardé / annulé, pause...) : "
                              "pc = haut-parleurs du PC en français, robot = haut-parleur du robot en anglais")
+    parser.add_argument('--no-rerun', dest='no_rerun', action='store_true',
+                        help="ne pas ouvrir la visualisation Rerun pendant l'enregistrement (CPU et ~10 Go de RAM en moins)")
     parser.add_argument('--timing', action='store_true',
                         help="journal toutes les 2 s : fréquence de boucle, temps d'IK, retard des bras sur la consigne")
     parser.add_argument('--dex1-bus', choices=['internal', 'usb'], default='internal',
@@ -426,7 +428,7 @@ if __name__ == '__main__':
                                      task_steps = args.task_steps,
                                      frequency = args.record_fps,
                                      image_size = [_rec_w, _rec_h],
-                                     rerun_log = not args.headless)
+                                     rerun_log = not args.headless and not args.no_rerun)
             # indices du buste dans body.qpos, lus par le convertisseur (g1d_wla.convert_teleop)
             recorder.info["body_layout"] = {"torso_pitch": args.torso_pitch_index, "torso_yaw": args.torso_yaw_index,
                                             "torso_pitch_const": args.torso_pitch}
