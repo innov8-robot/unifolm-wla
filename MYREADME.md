@@ -77,6 +77,7 @@ Par ordre de priorité. Cocher au fur et à mesure.
 - [ ] **Empilement Novares en sim** : scène corrigée (pièces à plat, prise par le côté), expert à 30 %. Modèle 0/30 dans tous les essais : 25 démos, 100 démos, 25 démos × 12 000 pas (boucle ouverte 8,3 mm), 1 itération DAgger. **Prochaine étape : fiabiliser l'expert** (pièce qui glisse, reprise depuis un état quelconque), puis évaluer sur des placements que l'expert réussit. Voir section 14 des constats.
 - [ ] **Vérifier sur le robot l'indice du moteur de rotation du buste** (hypothèse 12) avant d'utiliser `--torso-yaw-index`. Voir section 16 des constats.
 - [ ] **Essayer le mode politique avec corrections sur le robot** : `--policy-uri` dans la téléop, procédure dans `teleoperation/REAMDEG1D.md`. Corrigé après audit de sécurité et testé hors robot. Premier essai : vitesse bridée et arrêt d'urgence à portée.
+- [ ] **Installer flash-attn (après les entraînements en cours)** : aujourd'hui absent, le code bascule sur l'attention SDPA de PyTorch, dont le noyau FlashAttention fonctionne déjà sur la RTX 5090 (sm_120, torch 2.8 + CUDA 12.8). Pas de wheel toute faite pour Blackwell : compilation à tenter (longue, gourmande en RAM). Gain attendu faible (entraînement limité par l'optimiseur sur CPU, inférence ~0,4 s). Ne PAS modifier `.venv` pendant un entraînement.
 - [ ] **Enregistrer, puis fine-tuner** : la recette est prête et testée sur `mon_test`. Elle tourne à environ 1,7 s par pas sur la RTX 5090. Le correctif du projecteur gelé est **vérifié** : 1 397 M paramètres entraînables, soit la tête DiT plus les 6,87 M du projecteur. Reste à enregistrer de vraies démos iso, voir les points précédents.
 
 ---
@@ -483,7 +484,7 @@ Référence complète : section 9 de `docs/G1D_Constats.md`.
 | `teleoperation/Tele_OP/xr_teleoperate/README.md` | Doc officielle de xr_teleoperate |
 
 
-python teleop_hand_and_arm.py --network-interface=enx0c3796e0bc5b --img-server-ip=192.168.123.164 --input-mode=controller --arm=G1_29 --ee=dex1 --torso-pitch 0.166  --frequency 60 --ik-smooth light --timing --torso-yaw-index 12 --torso-yaw-max 1.0 --torso-yaw-rate 0.5 --base --column --record --task-name=napkin --task-goal="fold a green napkin"
+python teleop_hand_and_arm.py --network-interface=enx0c3796e0bc5b --img-server-ip=192.168.123.164 --input-mode=controller --arm=G1_29 --ee=dex1 --torso-pitch 0.166  --frequency 60 --ik-smooth standard --timing --torso-yaw-index 12 --torso-yaw-max 1.0 --torso-yaw-rate 0.5 --base --column --record --task-name=novares_box --task-goal="pick up the black object and put it inside a box"
 
 
 
