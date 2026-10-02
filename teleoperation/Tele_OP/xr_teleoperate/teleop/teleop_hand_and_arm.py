@@ -120,7 +120,7 @@ if __name__ == '__main__':
     # basic control parameters
     parser.add_argument('--frequency', type = float, default = 30.0, help = 'control and record \'s frequency')
     parser.add_argument('--input-mode', type=str, choices=['hand', 'controller'], default='hand', help='Select XR device input tracking source')
-    parser.add_argument('--display-mode', type=str, choices=['immersive', 'ego', 'pass-through'], default='immersive', help='Select XR device display mode')
+    parser.add_argument('--display-mode', type=str, choices=['immersive', 'ego', 'pass-through'], default = 'pass-through', help='Select XR device display mode')
     parser.add_argument('--wrist-pip', dest='wrist_pip', action='store_true', default=True, help='Show wrist cameras as picture-in-picture insets in the VR head view (ZMQ display modes only)')
     parser.add_argument('--no-wrist-pip', dest='wrist_pip', action='store_false', help='Disable wrist-camera picture-in-picture in VR')
     parser.add_argument('--arm', type=str, choices=['G1_29', 'G1_23', 'H1_2', 'H1'], default='G1_29', help='Select arm controller')
