@@ -61,7 +61,7 @@ Par ordre de priorité. Cocher au fur et à mesure.
 
 - [x] **Pousser `g1d-port` sur GitHub** : fait le 29 septembre 2026. Pousser à nouveau après chaque étape.
 - [ ] **Remettre la stéréo stock sur le robot** : la config teleimager du robot déclare encore l'Orbbec. Sans ça, tout nouvel enregistrement sera au mauvais format. *Procédure et bloc de config prêts : `teleoperation/REAMDEG1D.md`, section « Remettre la caméra stéréo stock ». Reste à l'appliquer sur le robot.*
-- [x] **Télécharger les poids et installer l'env du modèle** : fait. Poids dans `playground/Pretrained_models/UnifoLM-WLA-1.0-Base/`, env `.venv`, torch 2.8 CUDA 12.8 validé sur la RTX 5090. Sans flash-attention : le code bascule sur l'attention standard de PyTorch.
+- [x] **Télécharger les poids et installer l'env du modèle** : fait. Poids dans `playground/Pretrained_models/UnifoLM-WLA-1.0-Base/`, env `.venv`, torch 2.8 CUDA 12.8 validé sur la RTX 5090. flash-attn 2.8.3 installé le 3 octobre (optionnel).
 - [x] **Écrire le client de test** : `sim/wla_client.py`, boucle fermée sim ↔ serveur WLA qui fonctionne, environ 0,4 s par inférence. Premier zero-shot : vue rectifiée, le modèle reste quasi immobile. Vue brute, il approche la main droite et ferme la pince, mais 12 cm trop haut. Un essai par vue, donc non concluant. *La correspondance de pince sim ↔ Dex1 y est supposée linéaire.*
 - [x] **Écrire le convertisseur** : `g1d_wla/convert_teleop.py`, testé sur 2 épisodes de `mon_test`, lu sans erreur par le dataloader WLA avec `configs/g1d.yaml`. *Deux hypothèses à valider sur le robot : l'indice du tangage du buste et la hauteur de bassin équivalente.*
 - [ ] **Mesurer sur le robot** :
@@ -77,7 +77,7 @@ Par ordre de priorité. Cocher au fur et à mesure.
 - [ ] **Empilement Novares en sim** : scène corrigée (pièces à plat, prise par le côté), expert à 30 %. Modèle 0/30 dans tous les essais : 25 démos, 100 démos, 25 démos × 12 000 pas (boucle ouverte 8,3 mm), 1 itération DAgger. **Prochaine étape : fiabiliser l'expert** (pièce qui glisse, reprise depuis un état quelconque), puis évaluer sur des placements que l'expert réussit. Voir section 14 des constats.
 - [ ] **Vérifier sur le robot l'indice du moteur de rotation du buste** (hypothèse 12) avant d'utiliser `--torso-yaw-index`. Voir section 16 des constats.
 - [ ] **Essayer le mode politique avec corrections sur le robot** : `--policy-uri` dans la téléop, procédure dans `teleoperation/REAMDEG1D.md`. Corrigé après audit de sécurité et testé hors robot. Premier essai : vitesse bridée et arrêt d'urgence à portée.
-- [ ] **Installer flash-attn (après les entraînements en cours)** : aujourd'hui absent, le code bascule sur l'attention SDPA de PyTorch, dont le noyau FlashAttention fonctionne déjà sur la RTX 5090 (sm_120, torch 2.8 + CUDA 12.8). Pas de wheel toute faite pour Blackwell : compilation à tenter (longue, gourmande en RAM). Gain attendu faible (entraînement limité par l'optimiseur sur CPU, inférence ~0,4 s). Ne PAS modifier `.venv` pendant un entraînement.
+- [x] **Installer flash-attn** (3 octobre 2026) : roue précompilée 2.8.3 (torch 2.8, CUDA 12, cp312, contient sm_120), installée sans dépendances. Mesuré : précision inchangée en boucle ouverte (écart flash / SDPA au niveau du bruit d'échantillonnage), inférence 290 → 283 ms, entraînement 1,66 → 1,65 s/pas. Gain négligeable, mais c'est le chemin d'origine d'Unitree (la tête DiT utilise aussi les noyaux flash).
 - [ ] **Enregistrer, puis fine-tuner** : la recette est prête et testée sur `mon_test`. Elle tourne à environ 1,7 s par pas sur la RTX 5090. Le correctif du projecteur gelé est **vérifié** : 1 397 M paramètres entraînables, soit la tête DiT plus les 6,87 M du projecteur. Reste à enregistrer de vraies démos iso, voir les points précédents.
 
 ---
@@ -147,7 +147,12 @@ env -i HOME=$HOME PATH=/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin LANG=C.UTF-
 hf download unitreerobotics/UnifoLM-WLA-1.0-Base --local-dir playground/Pretrained_models/UnifoLM-WLA-1.0-Base
 ```
 
-flash-attention n'est pas installé : le code bascule tout seul sur l'attention standard de PyTorch.
+flash-attention (optionnel, gain négligeable mesuré) ; sans lui, le code bascule tout seul sur l'attention de PyTorch :
+
+```bash
+uv pip install --python .venv/bin/python --no-deps \
+  https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
+```
 
 Voir `docs/train_action_expert_en.md` pour l'installation complète.
 
