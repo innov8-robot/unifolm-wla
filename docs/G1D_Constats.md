@@ -830,3 +830,19 @@ Quatre relectures indépendantes (téléop, données et modèle, sim, scripts et
 - `_rtc_prev` du serveur est partagé entre connexions (les clients actuels envoient bien `policy_reset`) ;
 - les critères de réussite diffèrent encore légèrement entre l'expert, l'enregistreur, le client et les rollouts ;
 - **l'évaluation de l'empilement tire des placements que l'expert lui-même réussit rarement** (4 / 30 sur les placements de l'évaluation) : le 0 / 30 du modèle se lit par rapport à ce plafond.
+
+## 18. Robot réel : novares_box_v2 et novares_stack en boucle ouverte (3 octobre 2026)
+
+`sim/open_loop_check.py` sur les démos réelles, main droite, une requête tous les 30 pas, écart de position au pas 30. Référence « tenir la pose » = ne pas bouger.
+
+| Modèle | Épisodes | Écart médian au pas 30 | Tenir la pose |
+|---|---|---|---|
+| novares_box (55 démos du 1er oct.) | 0–50 (vus) | 15,2 mm | 96,6 mm |
+| novares_box_v2 (121 démos, 8000 pas depuis box) | 0–50 (vus) | 14,0 mm | 96,6 mm |
+| novares_box | 70–115 (nouvelles démos, **jamais vues**) | 44,6 mm | 112,3 mm |
+| novares_box_v2 | 70–115 (vues à l'entraînement) | 27,2 mm | 112,3 mm |
+| novares_stack (111 démos, 20 000 pas depuis box) | 0–100 (vus) | 17,4 mm | 25,3 mm |
+
+- **[VÉRIFIÉ]** v2 garde la précision sur les anciennes démos et s'ajuste aux nouvelles (prises plus à gauche). Il n'y a pas de split : 27 mm est un score sur des démos vues, pas une généralisation. Les 44,6 mm de l'ancien modèle sur ces démos montrent par contre que les positions nouvelles le sortaient de sa distribution.
+- **[VÉRIFIÉ]** Empilement : écart 10 mm quand la main bouge peu, 29–38 mm quand elle bouge de plus de 5 cm en 1 s. 16 requêtes sur 138 ont plus de 50 mm d'écart, souvent au départ d'un mouvement (le modèle prédit « rester » ou une autre direction). Les deux bras travaillent (≈ 1,7–1,8 m de trajet par épisode chacun) ; seule la main droite est mesurée ici.
+- **[HYPOTHÈSE]** Les gros écarts de l'empilement viennent de l'instant de départ des mouvements, ambigu en boucle ouverte ; seul l'essai robot le tranchera.
