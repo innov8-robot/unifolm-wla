@@ -5,7 +5,8 @@
 Le dossier est une tâche (contenant des episode_XXXX/) ou un dossier de tâches (ex. utils/data).
 
 Raccourcis : Espace lecture/pause · ←/→ pas à pas · Maj+←/→ ±1 s · ↑/↓ épisode précédent/suivant ·
-I / O début / fin de rognage · Suppr supprimer les épisodes sélectionnés.
+I / O début / fin (rognage ou segment) · 1-9 choisir l'étiquette · T étiqueter [début, fin] ·
+Suppr supprimer les épisodes sélectionnés.
 """
 from __future__ import annotations
 
@@ -16,14 +17,15 @@ from pathlib import Path
 from PySide6.QtCore import QProcess, QProcessEnvironment, Qt, QTimer
 from PySide6.QtGui import QColor, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QComboBox, QDialog, QDialogButtonBox,
-                               QFileDialog, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel,
-                               QLineEdit, QListWidget, QMainWindow, QMessageBox, QPlainTextEdit,
+                               QFileDialog, QFormLayout, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel,
+                               QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPlainTextEdit,
                                QPushButton, QSlider, QSplitter, QTableWidget, QTableWidgetItem,
                                QVBoxLayout, QWidget)
 
 from .charts import SignalChart
-from .model import CAMERA_LABELS, TaskDataset, find_tasks, guess_layout, load_doc, signals, summarize
-from .theme import ACCENT, KO, MUTED, OK, QSS, WARN
+from .model import (CAMERA_LABELS, TaskDataset, find_tasks, guess_layout, load_doc, load_segments, signals,
+                    summarize)
+from .theme import ACCENT, KO, MUTED, OK, QSS, TAG_COLORS, WARN
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_DIR = REPO / "teleoperation/Tele_OP/xr_teleoperate/teleop/utils/data"
@@ -122,12 +124,34 @@ class TrashDialog(QDialog):
             self.list.clear()
 
 
+class TagDialog(QDialog):
+    """Nouvelle étiquette (nom + consigne) ou modification de la consigne d'une étiquette."""
+
+    def __init__(self, parent=None, name: str = "", instruction: str = ""):
+        super().__init__(parent)
+        self.setWindowTitle("Étiquette" if not name else f"Étiquette « {name} »")
+        self.resize(560, 150)
+        form = QFormLayout(self)
+        self.name = QLineEdit(name)
+        self.name.setPlaceholderText("prise_gauche")
+        self.name.setEnabled(not name)
+        self.instr = QLineEdit(instruction)
+        self.instr.setPlaceholderText("pick up the black object with the left hand")
+        form.addRow("Nom (sans espace)", self.name)
+        form.addRow("Consigne du modèle", self.instr)
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        form.addRow(bb)
+
+
 class Studio(QMainWindow):
     def __init__(self, start: Path):
         super().__init__()
         self.setWindowTitle("Dataset Studio — G1-D")
         self.resize(1600, 980)
         self.ds: TaskDataset | None = None
+        self.root: Path | None = None
         self.doc = None
         self.ep_name = None
         self.frame = 0
@@ -317,6 +341,54 @@ class Studio(QMainWindow):
         self.b_trim.clicked.connect(self._trim)
         rl.addWidget(self.b_trim)
         rl.addSpacing(8)
+        h5 = QLabel("DÉCOUPAGE EN SOUS-TÂCHES")
+        h5.setObjectName("H2")
+        rl.addWidget(h5)
+        tgrow = QHBoxLayout()
+        self.tag_combo = QComboBox()
+        self.tag_combo.setMinimumWidth(170)
+        self.tag_combo.currentIndexChanged.connect(self._tag_changed)
+        b_tag_new = button("＋", "Quiet", "Nouvelle étiquette (nom + consigne du modèle)")
+        b_tag_edit = button("✎", "Quiet", "Modifier la consigne de l'étiquette")
+        b_tag_del = button("−", "Quiet", "Supprimer l'étiquette (si aucun segment ne l'utilise)")
+        b_tag_new.clicked.connect(self._new_tag)
+        b_tag_edit.clicked.connect(self._edit_tag)
+        b_tag_del.clicked.connect(self._del_tag)
+        tgrow.addWidget(self.tag_combo, 1)
+        for b in (b_tag_new, b_tag_edit, b_tag_del):
+            b.setFixedWidth(40)
+            tgrow.addWidget(b)
+        rl.addLayout(tgrow)
+        self.tag_instr_lbl = QLabel("")
+        self.tag_instr_lbl.setWordWrap(True)
+        self.tag_instr_lbl.setStyleSheet(f"color:{MUTED}")
+        rl.addWidget(self.tag_instr_lbl)
+        self.b_tag = button("🏷 Étiqueter [début, fin]  [T]", None, "Crée un segment avec l'étiquette choisie ; le début suivant est placé juste après")
+        self.b_tag.clicked.connect(self._tag_segment)
+        rl.addWidget(self.b_tag)
+        self.seg_list = QListWidget()
+        self.seg_list.setMaximumHeight(120)
+        self.seg_list.itemDoubleClicked.connect(self._goto_segment)
+        rl.addWidget(self.seg_list)
+        srow = QHBoxLayout()
+        b_seg_del = button("Supprimer le segment", "Quiet")
+        b_seg_del.clicked.connect(self._del_segment)
+        srow.addWidget(b_seg_del)
+        srow.addStretch()
+        rl.addLayout(srow)
+        self.tag_usage_lbl = QLabel("")
+        self.tag_usage_lbl.setWordWrap(True)
+        self.tag_usage_lbl.setObjectName("Mono")
+        rl.addWidget(self.tag_usage_lbl)
+        erow = QHBoxLayout()
+        b_exp_tag = button("Exporter par étiquette…", None, "Un dossier de tâche par étiquette : <tâche>__<étiquette>")
+        b_exp_all = button("Exporter tout…", None, "Un seul dossier <tâche>__segments, une consigne par étiquette")
+        b_exp_tag.clicked.connect(lambda: self._export("tag"))
+        b_exp_all.clicked.connect(lambda: self._export("all"))
+        erow.addWidget(b_exp_tag)
+        erow.addWidget(b_exp_all)
+        rl.addLayout(erow)
+        rl.addSpacing(8)
         h3 = QLabel("EN-TÊTE (info)")
         h3.setObjectName("H2")
         rl.addWidget(h3)
@@ -346,6 +418,9 @@ class Studio(QMainWindow):
         sc(Qt.Key_Down, lambda: self._step_episode(+1))
         sc(Qt.Key_I, self.set_in)
         sc(Qt.Key_O, self.set_out)
+        sc(Qt.Key_T, self._tag_segment)
+        for k in range(1, 10):
+            sc(str(k), lambda k=k: self.tag_combo.setCurrentIndex(k - 1) if k <= self.tag_combo.count() else None)
         sc(Qt.Key_Delete, self._delete)
 
     # ------------------------------------------------------------------ chargement
@@ -362,6 +437,7 @@ class Studio(QMainWindow):
             self.say(f"dossier introuvable : {root}", KO)
             return
         tasks = find_tasks(root)
+        self.root = root
         self.task_combo.blockSignals(True)
         self.task_combo.clear()
         for t in tasks:
@@ -385,6 +461,9 @@ class Studio(QMainWindow):
         tot = 0
         for r, ep in enumerate(eps):
             s = summarize(ep)
+            nseg = len(load_segments(ep))
+            if nseg:
+                s.flags.insert(0, f"{nseg} seg")
             tot += s.n
             out_col = {"success": OK, "failure": KO, "unknown": WARN}.get(s.outcome, MUTED)
             cells = [s.name.replace("episode_", ""), f"{s.seconds:5.1f} s", str(s.n), s.outcome or "—",
@@ -399,6 +478,7 @@ class Studio(QMainWindow):
                 if c == 5 and (s.error or "manquantes" in txt):
                     it.setForeground(QColor(KO))
                 self.table.setItem(r, c, it)
+        self._refresh_tags()
         n_tr = len(self.ds.trashed())
         self.summary_lbl.setText(f"{len(eps)} épisodes · {tot} pas · {tot / FPS / 60:.1f} min"
                                  + (f" · corbeille : {n_tr}" if n_tr else ""))
@@ -458,12 +538,14 @@ class Studio(QMainWindow):
         self.slider.setRange(0, max(0, n - 1))
         self.slider.blockSignals(False)
         self._update_marks()
+        self._refresh_segments()
         self.seek(0)
 
     def _chart_group(self, chart: SignalChart, group: str):
         chart.set_series(self.sig.get(group, {}), self._n())
         chart.set_cursor(self.frame)
         chart.set_marks(self.mark_in, self.mark_out)
+        chart.set_segments(self._segment_bands())
 
     def _n(self) -> int:
         return len(self.doc["data"]) if self.doc else 0
@@ -604,6 +686,165 @@ class Studio(QMainWindow):
         d.exec()
         if d.changed:
             self.load_task(self.ds.path)
+
+    # ------------------------------------------------------------------ étiquettes et segments
+    def _tag_color(self, name: str) -> str:
+        names = [t["name"] for t in self.ds.tags()] if self.ds else []
+        return TAG_COLORS[names.index(name) % len(TAG_COLORS)] if name in names else MUTED
+
+    def _current_tag(self) -> str | None:
+        return self.tag_combo.currentData()
+
+    def _refresh_tags(self, select: str | None = None):
+        cur = select or self._current_tag()
+        tags = self.ds.tags() if self.ds else []
+        self.tag_combo.blockSignals(True)
+        self.tag_combo.clear()
+        for i, t in enumerate(tags):
+            self.tag_combo.addItem(f"{i + 1} · {t['name']}" if i < 9 else t["name"], t["name"])
+            self.tag_combo.setItemData(i, QColor(TAG_COLORS[i % len(TAG_COLORS)]), Qt.ForegroundRole)
+        names = [t["name"] for t in tags]
+        if cur in names:
+            self.tag_combo.setCurrentIndex(names.index(cur))
+        self.tag_combo.blockSignals(False)
+        self._tag_changed()
+        usage = self.ds.tag_usage() if self.ds else {}
+        self.tag_usage_lbl.setText("\n".join(f"{n:<16} {usage.get(n, (0, 0))[0]:3d} seg · {usage.get(n, (0, 0))[1] / FPS:6.1f} s"
+                                              for n in names) or "aucune étiquette : ＋ pour en créer")
+
+    def _tag_changed(self, *_):
+        name = self._current_tag()
+        instr = next((t.get("instruction", "") for t in (self.ds.tags() if self.ds else []) if t["name"] == name), "")
+        self.tag_instr_lbl.setText(f"consigne : {instr}" if instr else ("consigne : (celle de l'épisode)" if name else ""))
+
+    def _segment_bands(self) -> list[tuple]:
+        if not self.ds or not self.ep_name:
+            return []
+        return [(s["start"], s["end"], self._tag_color(s["tag"]), s["tag"]) for s in self.ds.segments(self.ep_name)]
+
+    def _refresh_segments(self):
+        self.seg_list.clear()
+        if not self.ds or not self.ep_name:
+            return
+        for s in self.ds.segments(self.ep_name):
+            it = QListWidgetItem(f"{s['tag']:<16} {s['start']:4d} → {s['end']:4d}   {(s['end'] - s['start'] + 1) / FPS:5.1f} s")
+            it.setData(Qt.UserRole, s)
+            it.setForeground(QColor(self._tag_color(s["tag"])))
+            self.seg_list.addItem(it)
+        bands = self._segment_bands()
+        for ch in self.charts:
+            ch.set_segments(bands)
+
+    def _new_tag(self):
+        if not self.ds:
+            return
+        d = TagDialog(self)
+        if d.exec() != QDialog.Accepted:
+            return
+        try:
+            self.ds.add_tag(d.name.text().strip(), d.instr.text())
+        except ValueError as e:
+            self.say(str(e), KO)
+            return
+        self.say(f"étiquette « {d.name.text().strip()} » créée", OK)
+        self._refresh_tags(select=d.name.text().strip())
+
+    def _edit_tag(self):
+        name = self._current_tag()
+        if not name:
+            return
+        instr = next((t.get("instruction", "") for t in self.ds.tags() if t["name"] == name), "")
+        d = TagDialog(self, name, instr)
+        if d.exec() == QDialog.Accepted:
+            self.ds.set_tag_instruction(name, d.instr.text())
+            self.say(f"étiquette « {name} » : consigne mise à jour", OK)
+            self._refresh_tags()
+
+    def _del_tag(self):
+        name = self._current_tag()
+        if not name:
+            return
+        try:
+            self.ds.remove_tag(name)
+        except ValueError as e:
+            self.say(str(e), KO)
+            return
+        self.say(f"étiquette « {name} » supprimée", OK)
+        self._refresh_tags()
+
+    def _tag_segment(self):
+        tag = self._current_tag()
+        if not self.doc or not tag:
+            self.say("étiqueter : créer / choisir d'abord une étiquette", WARN)
+            return
+        a = self.mark_in if self.mark_in is not None else 0
+        b = self.mark_out if self.mark_out is not None else self.frame
+        try:
+            seg = self.ds.add_segment(self.ep_name, tag, a, b)
+        except ValueError as e:
+            self.say(f"étiqueter : {e}", KO)
+            return
+        self.say(f"🏷 {self.ep_name} : {tag} {seg['start']} → {seg['end']}", OK)
+        nxt = seg["end"] + 1
+        self.mark_in, self.mark_out = (nxt if nxt < self._n() else None), None
+        self._update_marks()
+        self._refresh_segments()
+        self._refresh_tags()
+
+    def _selected_segment(self) -> dict | None:
+        it = self.seg_list.currentItem()
+        return it.data(Qt.UserRole) if it else None
+
+    def _goto_segment(self, it):
+        s = it.data(Qt.UserRole)
+        self.mark_in, self.mark_out = s["start"], s["end"]
+        self._update_marks()
+        self.seek(s["start"])
+
+    def _del_segment(self):
+        s = self._selected_segment()
+        if not s:
+            return
+        self.ds.remove_segment(self.ep_name, s)
+        self.say(f"segment {s['tag']} {s['start']} → {s['end']} supprimé", OK)
+        self._refresh_segments()
+        self._refresh_tags()
+
+    def _export(self, mode: str):
+        if not self.ds:
+            return
+        usage = self.ds.tag_usage()
+        used = [t["name"] for t in self.ds.tags() if usage.get(t["name"], (0, 0))[0]]
+        if not used:
+            self.say("export : aucun segment étiqueté dans ce dataset", WARN)
+            return
+        task = self.ds.path.name
+        jobs = ([([t], self.ds.path.parent / f"{task}__{t}") for t in used] if mode == "tag"
+                else [(used, self.ds.path.parent / f"{task}__segments")])
+        lines = "\n".join(f"  {out.name} : {sum(usage[t][0] for t in tags)} épisodes" for tags, out in jobs)
+        if QMessageBox.question(self, "Exporter", f"Créer les sous-datasets suivants, à côté de « {task} » :\n\n{lines}\n\n"
+                                "Un export précédent du même nom est remplacé. Images en liens physiques : "
+                                "presque aucune place disque en plus.") != QMessageBox.Yes:
+            return
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            for tags, out in jobs:
+                try:
+                    k = self.ds.export_segments(tags, out)
+                    self.say(f"export {out.name} : {k} épisodes", OK)
+                except ValueError as e:
+                    self.say(f"export {out.name} : {e}", KO)
+        finally:
+            QApplication.restoreOverrideCursor()
+        cur = self.ds.path
+        if self.root and self.root.resolve() != cur.resolve():
+            self.task_combo.blockSignals(True)
+            self.task_combo.clear()
+            for t in find_tasks(self.root):
+                self.task_combo.addItem(t.name, str(t))
+            self.task_combo.setCurrentIndex(max(0, self.task_combo.findData(str(cur))))
+            self.task_combo.blockSignals(False)
+        self.say("les sous-datasets apparaissent dans le menu Tâche ; « Convertir au format WLA » marche dessus", ACCENT)
 
     def _convert(self):
         if not self.ds or (self.proc and self.proc.state() != QProcess.NotRunning):

@@ -28,7 +28,7 @@ Pour ouvrir un autre dossier, une tâche ou un dossier de tâches :
 | **Gauche — Épisodes** | Liste des épisodes : durée, nombre de pas, issue (réussi / raté / inconnu), pinces utilisées (● gauche / ● droite), indicateurs (base ou colonne en mouvement, images manquantes, épisode de moins d'1 s, JSON illisible). En haut : total d'épisodes, de pas et de minutes. |
 | **Centre — Caméras** | Les images synchronisées : tête œil gauche et œil droit, poignet gauche, poignet droit (3 vues pour la sim). Barre de lecture, vitesse ×0,25 à ×4. |
 | **Centre — Signaux** | Deux graphiques, chacun avec son groupe de courbes : bras gauche ou droit (état mesuré, consigne), pinces (état, consigne), rotation du buste, colonne (hauteur, consigne), base (vx, vyaw), intervention / avantage en mode politique. Le curseur suit la lecture ; cliquer ou glisser dans un graphique déplace la lecture. |
-| **Droite — Épisode** | Consigne (instruction du modèle), issue de l'essai, rognage, en-tête `info` du fichier, journal des actions. |
+| **Droite — Épisode** | Consigne (instruction du modèle), issue de l'essai, rognage, découpage en sous-tâches, en-tête `info` du fichier, journal des actions. |
 
 ## Raccourcis
 
@@ -38,7 +38,9 @@ Pour ouvrir un autre dossier, une tâche ou un dossier de tâches :
 | ← / → | Pas précédent / suivant |
 | Maj + ← / → | Recul / avance d'1 s |
 | ↑ / ↓ | Épisode précédent / suivant |
-| I / O | Début / fin de rognage au pas courant |
+| I / O | Début / fin au pas courant (rognage ou segment) |
+| 1 à 9 | Choisir l'étiquette n° 1 à 9 |
+| T | Étiqueter [début, fin] avec l'étiquette choisie |
 | Suppr | Supprimer les épisodes sélectionnés |
 
 Ctrl ou Maj + clic dans la liste sélectionne plusieurs épisodes.
@@ -53,6 +55,21 @@ Toutes les modifications destructives passent par la **corbeille** `<tâche>/.co
 - **Consigne** : modifiez le texte, puis appliquez-le à l'épisode courant, à la sélection ou à tous les épisodes.
 - **Issue** : réussi / raté / inconnu / non renseignée. Passer à « réussi » fixe `success_step` au dernier pas s'il est absent.
 - **Renuméroter** : remet des numéros contigus sans rien supprimer, par exemple si un dataset commence à `episode_0001`.
+
+## Découper en sous-tâches
+
+Pour entraîner des politiques plus simples (par exemple « prise main gauche », « prise main droite », « empiler »), on découpe chaque épisode en segments étiquetés, puis on exporte un sous-dataset.
+
+1. **Créer les étiquettes** (panneau *Découpage en sous-tâches*, bouton **＋**) : un nom sans espace (`prise_gauche`) et la **consigne du modèle** pour cette sous-tâche (`pick up the black object with the left hand`). **✎** modifie la consigne, **−** supprime une étiquette qui n'est plus utilisée.
+2. **Découper** : placez le début (**I**), avancez jusqu'à la fin de la sous-tâche, choisissez l'étiquette (**1** à **9**) puis **T**. Sans fin posée, le segment s'arrête au pas courant. Le début du segment suivant est placé juste après : on enchaîne **I** une fois, puis **T** à chaque changement de sous-tâche.
+3. Les segments apparaissent en bandes colorées sous les graphiques et dans la liste du panneau. Double-clic : aller au segment (et reprendre ses bornes). **Supprimer le segment** pour le refaire.
+4. **Exporter** :
+   - **Exporter par étiquette…** crée un dossier de tâche par étiquette, `<tâche>__<étiquette>` (une politique par sous-tâche) ;
+   - **Exporter tout…** crée un seul dossier `<tâche>__segments`, chaque segment avec la consigne de son étiquette (une seule politique qui suit la consigne).
+
+Les exports sont créés à côté de la tâche, apparaissent dans le menu **Tâche** et se convertissent avec **Convertir au format WLA** comme les autres. Chaque épisode exporté est un segment ; son `info.segment` dit d'où il vient. Les images sont des liens physiques : presque aucune place disque en plus. Un nouvel export **remplace** l'export précédent du même nom (jamais un dossier qui n'est pas un export).
+
+Stockage : `<tâche>/tags.json` (étiquettes) et `episode_XXXX/segments.json` (segments, pas inclus). Les segments suivent les épisodes renumérotés ou mis à la corbeille, et un rognage les décale.
 
 ## Convertir au format WLA
 

@@ -1,5 +1,5 @@
 """Graphique QPainter maison : plusieurs séries sur l'axe des pas, curseur du pas courant, zone de
-rognage, clic / glisser = se déplacer dans l'épisode."""
+rognage, bandes des segments étiquetés, clic / glisser = se déplacer dans l'épisode."""
 import numpy as np
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
@@ -18,6 +18,7 @@ class SignalChart(QWidget):
         self.cursor = 0
         self.mark_in = None
         self.mark_out = None
+        self.segments: list[tuple] = []          # (début, fin, couleur hex, libellé)
         self.setMinimumHeight(130)
         self.setMouseTracking(False)
 
@@ -32,6 +33,10 @@ class SignalChart(QWidget):
 
     def set_marks(self, a, b):
         self.mark_in, self.mark_out = a, b
+        self.update()
+
+    def set_segments(self, segments: list[tuple]):
+        self.segments = list(segments)
         self.update()
 
     # ------------------------------------------------------------------ dessin
@@ -62,6 +67,17 @@ class SignalChart(QWidget):
             a = self.mark_in if self.mark_in is not None else 0
             b = self.mark_out if self.mark_out is not None else self.n - 1
             p.fillRect(QRectF(X(a), r.top(), X(b) - X(a), r.height()), QColor(53, 224, 200, 28))
+        # segments : fond léger + bande colorée et libellé en bas du graphique
+        for a, b, col, label in self.segments:
+            c = QColor(col)
+            band = QRectF(X(a), r.top(), max(1.0, X(b) - X(a)), r.height())
+            c.setAlpha(22)
+            p.fillRect(band, c)
+            c.setAlpha(230)
+            strip = QRectF(X(a), r.bottom() - 12, max(1.0, X(b) - X(a)), 12)
+            p.fillRect(strip, c)
+            p.setPen(QColor("#0a0d12"))
+            p.drawText(strip.adjusted(3, 0, -2, 0), Qt.AlignLeft | Qt.AlignVCenter, label)
         # graduations
         p.setPen(QColor(MUTED))
         for v in (lo + pad, (lo + hi) / 2, hi - pad):

@@ -6,6 +6,12 @@ l'enregistreur et le convertisseur, qui ne regardent que les dossiers ``episode_
 supérieur) : un épisode supprimé y est DÉPLACÉ, un rognage y range l'ancien ``data.json`` et les
 images retirées. Après une suppression, les épisodes restants sont renumérotés sans trou à partir
 de 0000 (renommage en deux temps : aucun écrasement possible).
+
+Découpage en sous-tâches : ``<tâche>/tags.json`` liste les étiquettes (nom, consigne du modèle) et
+chaque ``episode_XXXX/segments.json`` ses segments ``{tag, start, end}`` (pas inclus). Le fichier
+suit l'épisode quand il est renuméroté ou mis à la corbeille ; un rognage décale les segments.
+``export_segments`` fabrique, à côté de la tâche, un dossier de tâche ordinaire dont chaque épisode
+est un segment (images en liens physiques, consigne de l'étiquette) : il se convertit comme les autres.
 """
 from __future__ import annotations
 
@@ -20,7 +26,10 @@ from pathlib import Path
 import numpy as np
 
 EP_RE = re.compile(r"^episode_(\d+)$")
+TAG_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 TRASH = ".corbeille"
+TAGS_FILE = "tags.json"
+SEGMENTS_FILE = "segments.json"
 
 #: libellés des images selon la disposition (mêmes conventions que g1d_wla.convert_teleop)
 CAMERA_LABELS = {
@@ -62,11 +71,41 @@ def load_doc(ep: Path) -> dict:
     return json.loads((ep / "data.json").read_text())
 
 
+def _write_json(path: Path, obj, indent=None) -> None:
+    """Écriture ATOMIQUE d'un fichier JSON."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(obj, ensure_ascii=False, indent=indent))
+    os.replace(tmp, path)
+
+
 def save_doc(ep: Path, doc: dict) -> None:
-    """Écriture ATOMIQUE de data.json."""
-    tmp = ep / "data.json.tmp"
-    tmp.write_text(json.dumps(doc, ensure_ascii=False))
-    os.replace(tmp, ep / "data.json")
+    _write_json(ep / "data.json", doc)
+
+
+def load_segments(ep: Path) -> list[dict]:
+    f = ep / SEGMENTS_FILE
+    if not f.exists():
+        return []
+    try:
+        segs = json.loads(f.read_text()).get("segments", [])
+    except Exception:
+        return []
+    return sorted((s for s in segs if {"tag", "start", "end"} <= set(s)), key=lambda s: (s["start"], s["end"]))
+
+
+def save_segments(ep: Path, segs: list[dict]) -> None:
+    segs = sorted(segs, key=lambda s: (s["start"], s["end"]))
+    if segs:
+        _write_json(ep / SEGMENTS_FILE, {"segments": segs}, indent=1)
+    elif (ep / SEGMENTS_FILE).exists():
+        (ep / SEGMENTS_FILE).unlink()
+
+
+def _link_or_copy(src: Path, dst: Path) -> None:
+    try:
+        os.link(src, dst)                      # même disque : aucune place en plus
+    except OSError:
+        shutil.copy2(src, dst)
 
 
 def summarize(ep: Path, fps: float = 30.0, check_images: bool = False) -> EpisodeSummary:
@@ -244,7 +283,125 @@ class TaskDataset:
         info["trimmed"] = {"from": name, "start": start, "end": end, "backup": bak.name}
         doc["data"] = kept
         save_doc(ep, doc)
+        segs = load_segments(ep)
+        if segs:                                # segments décalés et recoupés ; l'ancien fichier est sauvegardé
+            shutil.copy2(ep / SEGMENTS_FILE, bak / SEGMENTS_FILE)
+            save_segments(ep, [{**s, "start": max(s["start"], start) - start, "end": min(s["end"], end) - start}
+                               for s in segs if s["end"] >= start and s["start"] <= end])
         return len(kept)
+
+    # ------------------------------------------------------------------ étiquettes et segments
+    def tags(self) -> list[dict]:
+        """[{name, instruction}] dans l'ordre de création (touches 1 à 9 du studio)."""
+        f = self.path / TAGS_FILE
+        if not f.exists():
+            return []
+        try:
+            return [t for t in json.loads(f.read_text()).get("tags", []) if "name" in t]
+        except Exception:
+            return []
+
+    def save_tags(self, tags: list[dict]) -> None:
+        _write_json(self.path / TAGS_FILE, {"tags": tags}, indent=1)
+
+    def add_tag(self, name: str, instruction: str) -> None:
+        if not TAG_RE.match(name):
+            raise ValueError("nom d'étiquette : lettres, chiffres, _ et - (40 au plus), sans espace")
+        tags = self.tags()
+        if any(t["name"] == name for t in tags):
+            raise ValueError(f"l'étiquette « {name} » existe déjà")
+        self.save_tags(tags + [{"name": name, "instruction": instruction.strip()}])
+
+    def set_tag_instruction(self, name: str, instruction: str) -> None:
+        self.save_tags([{**t, "instruction": instruction.strip()} if t["name"] == name else t for t in self.tags()])
+
+    def tag_usage(self) -> dict[str, tuple[int, int]]:
+        """{étiquette: (nombre de segments, nombre de pas)} sur tout le dataset."""
+        out: dict[str, list[int]] = {}
+        for ep in self.episodes():
+            for s in load_segments(ep):
+                u = out.setdefault(s["tag"], [0, 0])
+                u[0] += 1
+                u[1] += s["end"] - s["start"] + 1
+        return {k: (v[0], v[1]) for k, v in out.items()}
+
+    def remove_tag(self, name: str) -> None:
+        n = self.tag_usage().get(name, (0, 0))[0]
+        if n:
+            raise ValueError(f"l'étiquette « {name} » est utilisée par {n} segment(s) : supprimez-les d'abord")
+        self.save_tags([t for t in self.tags() if t["name"] != name])
+
+    def segments(self, name: str) -> list[dict]:
+        return load_segments(self.path / name)
+
+    def add_segment(self, name: str, tag: str, start: int, end: int) -> dict:
+        ep = self.path / name
+        n = len(load_doc(ep)["data"])
+        start, end = max(0, int(start)), min(n - 1, int(end))
+        if end <= start:
+            raise ValueError("la fin du segment doit être après son début")
+        if not any(t["name"] == tag for t in self.tags()):
+            raise ValueError(f"étiquette inconnue : {tag}")
+        seg = {"tag": tag, "start": start, "end": end}
+        save_segments(ep, load_segments(ep) + [seg])
+        return seg
+
+    def remove_segment(self, name: str, seg: dict) -> None:
+        ep = self.path / name
+        segs = load_segments(ep)
+        for i, s in enumerate(segs):
+            if (s["tag"], s["start"], s["end"]) == (seg["tag"], seg["start"], seg["end"]):
+                del segs[i]
+                break
+        save_segments(ep, segs)
+
+    def export_segments(self, tags: list[str], out: Path) -> int:
+        """Dossier de tâche ``out`` dont chaque épisode est un segment portant une des ``tags``,
+        avec la consigne de son étiquette (vide : consigne de l'épisode). ``out`` est REMPLACÉ.
+        Rend le nombre d'épisodes écrits."""
+        out = Path(out)
+        if out.resolve() == self.path.resolve():
+            raise ValueError("l'export ne peut pas remplacer la tâche source")
+        if out.exists() and not is_export(out):
+            raise ValueError(f"{out.name} existe et n'est pas un export de segments : il ne sera pas remplacé")
+        instr = {t["name"]: t.get("instruction", "") for t in self.tags()}
+        tmp = out.with_name(f".export_{out.name}")
+        shutil.rmtree(tmp, ignore_errors=True)
+        tmp.mkdir(parents=True)
+        k = 0
+        for ep in self.episodes():
+            segs = [s for s in load_segments(ep) if s["tag"] in tags]
+            if not segs:
+                continue
+            doc = load_doc(ep)
+            for s in segs:
+                steps = [dict(st) for st in doc["data"][s["start"]:s["end"] + 1]]
+                if len(steps) < 2:
+                    continue
+                dst = tmp / f"episode_{k:04d}"
+                dst.mkdir()
+                for sub in {Path(p).parent for st in steps for p in st["colors"].values()}:
+                    (dst / sub).mkdir(parents=True, exist_ok=True)
+                for i, st in enumerate(steps):
+                    st["idx"] = i
+                    for p in st["colors"].values():
+                        if (ep / p).exists() and not (dst / p).exists():
+                            _link_or_copy(ep / p, dst / p)
+                info = {key: v for key, v in doc.get("info", {}).items()
+                        if key not in ("success_step", "takeover_step", "trimmed", "outcome")}
+                if doc.get("info", {}).get("outcome") == "success":
+                    info.update(outcome="success", success_step=len(steps) - 1)
+                info["segment"] = {"source": str(self.path), "episode": ep.name, "tag": s["tag"],
+                                   "start": s["start"], "end": s["end"]}
+                text = dict(doc.get("text", {}))
+                if instr.get(s["tag"]):
+                    text["goal"] = instr[s["tag"]]
+                save_doc(dst, {"info": info, "text": text, "data": steps})
+                k += 1
+        if out.exists():
+            shutil.rmtree(out)
+        tmp.rename(out)
+        return k
 
     def set_goal(self, names: list[str], goal: str) -> None:
         for n in names:
@@ -264,6 +421,15 @@ class TaskDataset:
         else:
             info.pop("outcome", None)
         save_doc(ep, doc)
+
+
+def is_export(task: Path) -> bool:
+    """Vrai si tous les épisodes de ``task`` viennent d'``export_segments`` (dossier régénérable)."""
+    eps = [p for p in Path(task).iterdir() if p.is_dir() and EP_RE.match(p.name)]
+    try:
+        return all("segment" in load_doc(p).get("info", {}) for p in eps)
+    except Exception:
+        return False
 
 
 def find_tasks(root: str | Path) -> list[Path]:

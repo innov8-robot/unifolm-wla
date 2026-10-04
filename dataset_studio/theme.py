@@ -2,6 +2,8 @@
 ACCENT = "#35e0c8"
 OK, KO, WARN, MUTED = "#3fd67f", "#f4635e", "#e3b341", "#8b949e"
 SERIES = ["#35e0c8", "#e3b341", "#f4635e", "#4a8fe0", "#9acd4e", "#e06a9f", "#8d6fd1", "#e0813a"]
+#: couleurs des étiquettes de segments (touches 1 à 9)
+TAG_COLORS = ["#4a8fe0", "#e3b341", "#e06a9f", "#9acd4e", "#8d6fd1", "#e0813a", "#35e0c8", "#f4635e", "#c9b28a"]
 MONO = "font-family: 'JetBrains Mono','DejaVu Sans Mono',monospace;"
 
 QSS = f"""
