@@ -1,15 +1,17 @@
 """Graphique QPainter maison : plusieurs séries sur l'axe des pas, curseur du pas courant, zone de
-rognage, bandes des segments étiquetés, clic / glisser = se déplacer dans l'épisode."""
+rognage, bandes des segments étiquetés, clic / glisser = se déplacer dans l'épisode, clic droit sur
+un segment = menu (supprimer, reprendre ses bornes)."""
 import numpy as np
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QMenu, QWidget
 
 from .theme import ACCENT, MUTED, SERIES
 
 
 class SignalChart(QWidget):
     seek = Signal(int)
+    segment_action = Signal(int, str)        # (indice du segment, "delete" | "marks")
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -129,7 +131,29 @@ class SignalChart(QWidget):
             k = int(round((x - r.left()) / r.width() * (self.n - 1)))
             self.seek.emit(max(0, min(self.n - 1, k)))
 
+    def _segment_at(self, x) -> int | None:
+        r = self._plot_rect()
+        if self.n < 2:
+            return None
+        k = (x - r.left()) / r.width() * (self.n - 1)
+        hits = [i for i, (a, b, _c, _l) in enumerate(self.segments) if a - 0.5 <= k <= b + 0.5]
+        return min(hits, key=lambda i: self.segments[i][1] - self.segments[i][0]) if hits else None
+
     def mousePressEvent(self, e):
+        if e.button() == Qt.RightButton:
+            i = self._segment_at(e.position().x())
+            if i is None:
+                return
+            a, b, _c, label = self.segments[i]
+            m = QMenu(self)
+            act_del = m.addAction(f"Supprimer le segment « {label} »  ({a} → {b})")
+            act_marks = m.addAction("Reprendre ses bornes (début / fin)")
+            chosen = m.exec(e.globalPosition().toPoint())
+            if chosen is act_del:
+                self.segment_action.emit(i, "delete")
+            elif chosen is act_marks:
+                self.segment_action.emit(i, "marks")
+            return
         self._emit(e.position().x())
 
     def mouseMoveEvent(self, e):

@@ -280,6 +280,7 @@ class Studio(QMainWindow):
             cb.setProperty("default", default)
             ch = SignalChart()
             ch.seek.connect(self.seek)
+            ch.segment_action.connect(self._chart_segment_action)
             cb.currentTextChanged.connect(lambda txt, c=ch: self._chart_group(c, txt))
             r.addWidget(cb)
             r.addStretch()
@@ -362,6 +363,10 @@ class Studio(QMainWindow):
         self.tag_instr_lbl.setWordWrap(True)
         self.tag_instr_lbl.setStyleSheet(f"color:{MUTED}")
         rl.addWidget(self.tag_instr_lbl)
+        keys_lbl = QLabel("1-9 : choisir l'étiquette · I : début · T : poser jusqu'au pas courant · clic droit sur une bande : supprimer")
+        keys_lbl.setWordWrap(True)
+        keys_lbl.setStyleSheet(f"color:{MUTED}; font-size:11px")
+        rl.addWidget(keys_lbl)
         self.b_tag = button("🏷 Étiqueter [début, fin]  [T]", None, "Crée un segment avec l'étiquette choisie ; le début suivant est placé juste après")
         self.b_tag.clicked.connect(self._tag_segment)
         rl.addWidget(self.b_tag)
@@ -813,6 +818,21 @@ class Studio(QMainWindow):
         self.mark_in, self.mark_out = s["start"], s["end"]
         self._update_marks()
         self.seek(s["start"])
+
+    def _chart_segment_action(self, i: int, action: str):
+        segs = self.ds.segments(self.ep_name) if self.ds and self.ep_name else []
+        if not 0 <= i < len(segs):
+            return
+        s = segs[i]
+        if action == "delete":
+            self.ds.remove_segment(self.ep_name, s)
+            self.say(f"segment {s['tag']} {s['start']} → {s['end']} supprimé", OK)
+            self._refresh_segments()
+            self._refresh_tags()
+        else:
+            self.mark_in, self.mark_out = s["start"], s["end"]
+            self._update_marks()
+            self.seek(s["start"])
 
     def _delete_key(self):
         """Suppr : le segment sélectionné si la liste des segments a le focus, sinon les épisodes."""
