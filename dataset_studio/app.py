@@ -125,7 +125,7 @@ class TrashDialog(QDialog):
 
 
 class TagDialog(QDialog):
-    """Nouvelle étiquette (nom + consigne) ou modification de la consigne d'une étiquette."""
+    """Nouvelle étiquette (nom + consigne), ou modification du nom et de la consigne d'une étiquette."""
 
     def __init__(self, parent=None, name: str = "", instruction: str = ""):
         super().__init__(parent)
@@ -134,7 +134,6 @@ class TagDialog(QDialog):
         form = QFormLayout(self)
         self.name = QLineEdit(name)
         self.name.setPlaceholderText("prise_gauche")
-        self.name.setEnabled(not name)
         self.instr = QLineEdit(instruction)
         self.instr.setPlaceholderText("pick up the black object with the left hand")
         form.addRow("Nom (sans espace)", self.name)
@@ -349,8 +348,8 @@ class Studio(QMainWindow):
         self.tag_combo.setMinimumWidth(170)
         self.tag_combo.currentIndexChanged.connect(self._tag_changed)
         b_tag_new = button("＋", "Quiet", "Nouvelle étiquette (nom + consigne du modèle)")
-        b_tag_edit = button("✎", "Quiet", "Modifier la consigne de l'étiquette")
-        b_tag_del = button("−", "Quiet", "Supprimer l'étiquette (si aucun segment ne l'utilise)")
+        b_tag_edit = button("✎", "Quiet", "Renommer l'étiquette ou modifier sa consigne")
+        b_tag_del = button("−", "Quiet", "Supprimer l'étiquette (et ses segments, après confirmation)")
         b_tag_new.clicked.connect(self._new_tag)
         b_tag_edit.clicked.connect(self._edit_tag)
         b_tag_del.clicked.connect(self._del_tag)
@@ -369,6 +368,7 @@ class Studio(QMainWindow):
         self.seg_list = QListWidget()
         self.seg_list.setMaximumHeight(120)
         self.seg_list.itemDoubleClicked.connect(self._goto_segment)
+        self.seg_list.setToolTip("Double-clic : aller au segment · Suppr : supprimer le segment sélectionné")
         rl.addWidget(self.seg_list)
         srow = QHBoxLayout()
         b_seg_del = button("Supprimer le segment", "Quiet")
@@ -421,7 +421,7 @@ class Studio(QMainWindow):
         sc(Qt.Key_T, self._tag_segment)
         for k in range(1, 10):
             sc(str(k), lambda k=k: self.tag_combo.setCurrentIndex(k - 1) if k <= self.tag_combo.count() else None)
-        sc(Qt.Key_Delete, self._delete)
+        sc(Qt.Key_Delete, self._delete_key)
 
     # ------------------------------------------------------------------ chargement
     def say(self, msg: str, color: str | None = None):
@@ -755,22 +755,35 @@ class Studio(QMainWindow):
             return
         instr = next((t.get("instruction", "") for t in self.ds.tags() if t["name"] == name), "")
         d = TagDialog(self, name, instr)
-        if d.exec() == QDialog.Accepted:
-            self.ds.set_tag_instruction(name, d.instr.text())
-            self.say(f"étiquette « {name} » : consigne mise à jour", OK)
-            self._refresh_tags()
+        if d.exec() != QDialog.Accepted:
+            return
+        new = d.name.text().strip()
+        if new != name:
+            try:
+                self.ds.rename_tag(name, new)
+            except ValueError as e:
+                self.say(str(e), KO)
+                return
+            self.say(f"étiquette « {name} » renommée « {new} » (segments compris)", OK)
+            name = new
+        self.ds.set_tag_instruction(name, d.instr.text())
+        self.say(f"étiquette « {name} » : consigne « {d.instr.text().strip()} »", OK)
+        self._refresh_tags(select=name)
+        self._refresh_segments()
 
     def _del_tag(self):
         name = self._current_tag()
         if not name:
             return
-        try:
-            self.ds.remove_tag(name)
-        except ValueError as e:
-            self.say(str(e), KO)
+        n = self.ds.tag_usage().get(name, (0, 0))[0]
+        msg = (f"Supprimer l'étiquette « {name} » et ses {n} segment(s) dans tous les épisodes ?" if n
+               else f"Supprimer l'étiquette « {name} » ?")
+        if QMessageBox.question(self, "Supprimer l'étiquette", msg) != QMessageBox.Yes:
             return
-        self.say(f"étiquette « {name} » supprimée", OK)
+        n = self.ds.remove_tag(name, with_segments=True)
+        self.say(f"étiquette « {name} » supprimée" + (f", avec ses {n} segment(s)" if n else ""), OK)
         self._refresh_tags()
+        self._refresh_segments()
 
     def _tag_segment(self):
         tag = self._current_tag()
@@ -801,9 +814,17 @@ class Studio(QMainWindow):
         self._update_marks()
         self.seek(s["start"])
 
+    def _delete_key(self):
+        """Suppr : le segment sélectionné si la liste des segments a le focus, sinon les épisodes."""
+        if self.seg_list.hasFocus():
+            self._del_segment()
+        else:
+            self._delete()
+
     def _del_segment(self):
         s = self._selected_segment()
         if not s:
+            self.say("supprimer un segment : cliquez d'abord dessus dans la liste", WARN)
             return
         self.ds.remove_segment(self.ep_name, s)
         self.say(f"segment {s['tag']} {s['start']} → {s['end']} supprimé", OK)

@@ -60,9 +60,9 @@ Toutes les modifications destructives passent par la **corbeille** `<tâche>/.co
 
 Pour entraîner des politiques plus simples (par exemple « prise main gauche », « prise main droite », « empiler »), on découpe chaque épisode en segments étiquetés, puis on exporte un sous-dataset.
 
-1. **Créer les étiquettes** (panneau *Découpage en sous-tâches*, bouton **＋**) : un nom sans espace (`prise_gauche`) et la **consigne du modèle** pour cette sous-tâche (`pick up the black object with the left hand`). **✎** modifie la consigne, **−** supprime une étiquette qui n'est plus utilisée.
+1. **Créer les étiquettes** (panneau *Découpage en sous-tâches*, bouton **＋**) : un nom sans espace (`prise_gauche`) et la **consigne du modèle** pour cette sous-tâche (`pick up the black object with the left hand`). **✎** renomme l'étiquette ou modifie sa consigne (ses segments suivent), **−** supprime l'étiquette, avec tous ses segments après confirmation.
 2. **Découper** : placez le début (**I**), avancez jusqu'à la fin de la sous-tâche, choisissez l'étiquette (**1** à **9**) puis **T**. Sans fin posée, le segment s'arrête au pas courant. Le début du segment suivant est placé juste après : on enchaîne **I** une fois, puis **T** à chaque changement de sous-tâche.
-3. Les segments apparaissent en bandes colorées sous les graphiques et dans la liste du panneau. Double-clic : aller au segment (et reprendre ses bornes). **Supprimer le segment** pour le refaire.
+3. Les segments apparaissent en bandes colorées sous les graphiques et dans la liste du panneau. Double-clic : aller au segment (et reprendre ses bornes). Pour effacer un segment raté : cliquez dessus dans la liste, puis **Supprimer le segment** ou **Suppr** (Suppr ne supprime un épisode que si le focus n'est pas sur la liste des segments).
 4. **Exporter** :
    - **Exporter par étiquette…** crée un dossier de tâche par étiquette, `<tâche>__<étiquette>` (une politique par sous-tâche) ;
    - **Exporter tout…** crée un seul dossier `<tâche>__segments`, chaque segment avec la consigne de son étiquette (une seule politique qui suit la consigne).

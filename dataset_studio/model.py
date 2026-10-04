@@ -325,11 +325,32 @@ class TaskDataset:
                 u[1] += s["end"] - s["start"] + 1
         return {k: (v[0], v[1]) for k, v in out.items()}
 
-    def remove_tag(self, name: str) -> None:
+    def remove_tag(self, name: str, with_segments: bool = False) -> int:
+        """Supprime l'étiquette ; avec ``with_segments``, aussi ses segments dans tous les épisodes.
+        Rend le nombre de segments supprimés."""
         n = self.tag_usage().get(name, (0, 0))[0]
+        if n and not with_segments:
+            raise ValueError(f"l'étiquette « {name} » est utilisée par {n} segment(s)")
         if n:
-            raise ValueError(f"l'étiquette « {name} » est utilisée par {n} segment(s) : supprimez-les d'abord")
+            for ep in self.episodes():
+                segs = load_segments(ep)
+                if any(s["tag"] == name for s in segs):
+                    save_segments(ep, [s for s in segs if s["tag"] != name])
         self.save_tags([t for t in self.tags() if t["name"] != name])
+        return n
+
+    def rename_tag(self, old: str, new: str) -> None:
+        """Renomme l'étiquette et tous ses segments."""
+        if not TAG_RE.match(new):
+            raise ValueError("nom d'étiquette : lettres, chiffres, _ et - (40 au plus), sans espace")
+        tags = self.tags()
+        if any(t["name"] == new for t in tags):
+            raise ValueError(f"l'étiquette « {new} » existe déjà")
+        self.save_tags([{**t, "name": new} if t["name"] == old else t for t in tags])
+        for ep in self.episodes():
+            segs = load_segments(ep)
+            if any(s["tag"] == old for s in segs):
+                save_segments(ep, [{**s, "tag": new} if s["tag"] == old else s for s in segs])
 
     def segments(self, name: str) -> list[dict]:
         return load_segments(self.path / name)
