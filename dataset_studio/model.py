@@ -94,7 +94,8 @@ def load_segments(ep: Path) -> list[dict]:
 
 
 def save_segments(ep: Path, segs: list[dict]) -> None:
-    segs = sorted(segs, key=lambda s: (s["start"], s["end"]))
+    segs = sorted(({**s, "start": int(s["start"]), "end": int(s["end"])} for s in segs),
+                  key=lambda s: (s["start"], s["end"]))
     if segs:
         _write_json(ep / SEGMENTS_FILE, {"segments": segs}, indent=1)
     elif (ep / SEGMENTS_FILE).exists():
