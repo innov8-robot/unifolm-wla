@@ -848,3 +848,18 @@ Quatre relectures indépendantes (téléop, données et modèle, sim, scripts et
 - **[HYPOTHÈSE]** Les gros écarts de l'empilement viennent de l'instant de départ des mouvements, ambigu en boucle ouverte ; seul l'essai robot le tranchera.
 
 **[VÉRIFIÉ] flash-attn 2.8.3 installé** (roue précompilée cu12 / torch 2.8 / cp312, code sm_120 présent). Avec lui, le VLM passe en `flash_attention_2` et la tête DiT en FLASH / FLASH_VARLEN (chemin d'origine d'Unitree) au lieu de SDPA. Sur box_v2, 52 requêtes en boucle ouverte : deux passages SDPA diffèrent de 7,1 mm par requête (médiane), flash et SDPA de 6,3 mm ; l'écart vient du bruit tiré à chaque génération, pas du noyau. Inférence 290 → 283 ms, entraînement 1,66 → 1,65 s/pas : le temps reste dominé par l'optimiseur sur CPU.
+
+**[VÉRIFIÉ] novares_stack_mix et novares_stack_segments en boucle ouverte (5 octobre 2026)** — démos vues à l'entraînement, écart au pas 30, entre parenthèses « tenir la pose ».
+
+| Modèle · consigne | Main mesurée | Écart médian | Quand la main bouge de plus de 5 cm |
+|---|---|---|---|
+| stack (ancien) · main par main | droite | 17,4 mm (25,3) | 32,4 mm |
+| mix · main par main | droite | 17,6 mm (28,5) | 25,7 mm |
+| mix · deux mains | droite / gauche | 38,8 / 38,9 mm (≈ 80) | 40,2 / 50,2 mm |
+| segments · tour gauche | gauche | 26,7 mm (67,2) | 26,1 mm |
+| segments · tour droite | droite | 33,3 mm (86,0) | 33,5 mm |
+| segments · fusion | droite | 26,7 mm (44,5) | 46,3 mm |
+
+- mix n'a rien oublié de l'empilement main par main et suit mieux les grands mouvements (25,7 contre 32,4 mm).
+- Deux mains : écart deux fois plus grand en absolu, mais les démos vont deux fois plus vite (11 s contre 22 s par épisode) ; le modèle part dans la bonne direction (39 contre 80 mm). L'instant des prises est moins bien appris (écart de pince 0,32 à droite contre 0,03 main par main).
+- Segments : comparables aux autres en proportion du mouvement ; la fusion reste la phase la moins précise sur les grands déplacements.
