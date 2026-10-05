@@ -100,6 +100,11 @@ class G1_29_ArmController:
         self.TORSO_YAW_KD = 2.6
         self.TORSO_YAW_LEAD = 0.15
         self.TORSO_YAW_ABS_LIMIT = 2.3 # course mesurée du buste sur ce G1-D (mpc_any : ~-2.0 / +2.36)     # écart max consigne / mesure (rad) : un buste bloqué ne force pas
+        # mode « gravité zéro » (G1-D) : bras souples déplacés à la main, la boucle principale envoie
+        # consigne = position mesurée et couple = compensation de gravité ; gains faibles = amortissement
+        self.compliant = False
+        self.KP_SOFT, self.KD_SOFT = 4.0, 1.0
+        self.KP_SOFT_WRIST, self.KD_SOFT_WRIST = 2.0, 0.5
 
         if self.motion_mode:
             self.lowcmd_publisher = ChannelPublisher(kTopicLowCommand_Motion, hg_LowCmd)
@@ -325,6 +330,23 @@ class G1_29_ArmController:
     def get_torso_yaw_target(self) -> float:
         with self.ctrl_lock:
             return self._torso_yaw_target
+
+    def set_compliant(self, on: bool):
+        """Gravité zéro : gains des bras abaissés (``on``) ou remis aux gains normaux. La consigne repart
+        de la position MESURÉE dans les deux sens : aucun saut à l'entrée ni à la sortie."""
+        q = self.get_current_dual_arm_q().copy()
+        with self.ctrl_lock:
+            for id in G1_29_JointArmIndex:
+                wrist = self._Is_wrist_motor(id)
+                if on:
+                    kp, kd = (self.KP_SOFT_WRIST, self.KD_SOFT_WRIST) if wrist else (self.KP_SOFT, self.KD_SOFT)
+                else:
+                    kp, kd = (self.kp_wrist, self.kd_wrist) if wrist else (self.kp_low, self.kd_low)
+                self.msg.motor_cmd[id].kp = kp
+                self.msg.motor_cmd[id].kd = kd
+            self.q_target = q
+            self.compliant = bool(on)
+        logger_mp.info(f"[G1_29_ArmController] gravité zéro {'ACTIVÉE (bras souples)' if on else 'coupée (bras tenus)'}")
 
     def ctrl_dual_arm(self, q_target, tauff_target):
         '''Set control target values q & tau of the left and right arm motors.'''

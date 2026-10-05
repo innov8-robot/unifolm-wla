@@ -412,6 +412,8 @@ if __name__ == '__main__':
         cal = {"paused": False, "t0": 0.0, "q0": np.zeros(14),
                "offset": {"left": np.zeros(3), "right": np.zeros(3)}}
         prev_cY = False
+        zero_g = False                 # gravité zéro (clic joystick gauche, mode politique hors essai)
+        prev_lthumb = False
         base_last = {"pose": None, "t": 0.0}
         column_last = {"pose": None, "t": 0.0}
         loop_count = -1
@@ -568,6 +570,31 @@ if __name__ == '__main__':
                         voice.say("Reprise", "Resume")
                         logger_mp.info(f"▶️  Suivi REPRIS, recalé : décalage gauche {np.round(cal['offset']['left'], 3)} m, "
                                        f"droite {np.round(cal['offset']['right'], 3)} m")
+            # gravité zéro : clic sur le joystick GAUCHE, en mode politique HORS essai, pour placer les bras à
+            # la main avant un essai ; second clic = bras tenus à la pose atteinte. Coupée d'office dès que
+            # l'essai démarre (A) : la politique repart alors de la pose mesurée
+            cLT = bool(getattr(tele_data, "left_ctrl_thumbstick", False)) if args.input_mode == "controller" else False
+            lt_edge = cLT and not prev_lthumb
+            prev_lthumb = cLT
+            zero_g_ok = (bridge is not None and not RECORD_RUNNING and START and args.arm == "G1_29"
+                         and args.input_mode == "controller")
+            if lt_edge and zero_g_ok:
+                zero_g = not zero_g
+                arm_ctrl.set_compliant(zero_g)
+                cal["paused"] = False
+                hold_ik = None
+                if not zero_g and hasattr(arm_ik, "smooth_filter"):   # lissage IK sans l'ancienne pose
+                    arm_ik.smooth_filter = WeightedMovingFilter(arm_ik.smooth_filter._weights, 14)
+                voice.say("Gravité zéro" if zero_g else "Bras tenus", "Zero gravity" if zero_g else "Arms held")
+                logger_mp.info("🪶  GRAVITÉ ZÉRO : placez les bras à la main, clic joystick gauche pour les tenir"
+                               if zero_g else "✋  Bras tenus à la pose atteinte")
+            elif zero_g and not zero_g_ok:
+                zero_g = False
+                arm_ctrl.set_compliant(False)
+                hold_ik = None
+                if hasattr(arm_ik, "smooth_filter"):
+                    arm_ik.smooth_filter = WeightedMovingFilter(arm_ik.smooth_filter._weights, 14)
+                logger_mp.info("✋  Gravité zéro coupée : l'essai démarre")
             if bridge is not None and args.record and START:
                 lX, lY = bool(tele_data.left_ctrl_aButton), bool(tele_data.left_ctrl_bButton)
                 if RECORD_RUNNING and not RECORD_CANCEL and not tele_data.right_ctrl_bButton \
@@ -773,6 +800,13 @@ if __name__ == '__main__':
             if args.right_only and frozen_left_arm_q is not None:
                 sol_q[:7] = frozen_left_arm_q
                 sol_tauff[:7] = 0.0
+            if zero_g:                                   # bras souples : suivre la mesure, compenser la gravité
+                hold_ik = None                           # la tenue repartira de la pose atteinte
+                sol_q = np.asarray(current_lr_arm_q, float).copy()
+                sol_tauff = pin.rnea(arm_ik.reduced_robot.model, arm_ik.reduced_robot.data, sol_q,
+                                     np.zeros(14), np.zeros(14))
+                if args.torso_yaw_index is not None:
+                    arm_ctrl.hold_torso_yaw()
             arm_ctrl.ctrl_dual_arm(sol_q, sol_tauff)
 
             # record data (un pas sur RECORD_STRIDE si la boucle tourne plus vite que l'enregistrement)
@@ -953,6 +987,13 @@ if __name__ == '__main__':
         import traceback
         logger_mp.error(traceback.format_exc())
     finally:
+        try:
+            if getattr(arm_ctrl, "compliant", False):
+                arm_ctrl.set_compliant(False)          # gains normaux avant le retour au repos
+        except NameError:
+            pass
+        except Exception as e:
+            logger_mp.error(f"sortie de la gravité zéro : {e}")
         try:
             if column is not None:
                 column.stop()
