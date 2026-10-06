@@ -25,25 +25,30 @@ Pour ouvrir un autre dossier, une tâche ou un dossier de tâches :
 
 | Zone | Contenu |
 |---|---|
-| **Gauche — Épisodes** | Liste des épisodes : durée, nombre de pas, issue (réussi / raté / inconnu), pinces utilisées (● gauche / ● droite), indicateurs (base ou colonne en mouvement, images manquantes, épisode de moins d'1 s, JSON illisible). En haut : total d'épisodes, de pas et de minutes. |
-| **Centre — Caméras** | Les images synchronisées : tête œil gauche et œil droit, poignet gauche, poignet droit (3 vues pour la sim). Barre de lecture, vitesse ×0,25 à ×4. |
-| **Centre — Signaux** | Deux graphiques, chacun avec son groupe de courbes : bras gauche ou droit (état mesuré, consigne), pinces (état, consigne), rotation du buste, colonne (hauteur, consigne), base (vx, vyaw), intervention / avantage en mode politique. Le curseur suit la lecture ; cliquer ou glisser dans un graphique déplace la lecture. |
-| **Droite — Épisode** | Consigne (instruction du modèle), issue de l'essai, rognage, découpage en sous-tâches, en-tête `info` du fichier, journal des actions. |
+| **En-tête** | Tâche (menu), résumé (épisodes, minutes, réussis / ratés / sans résultat), **Objets…**, Recharger, Ouvrir…, **? Aide** (F1 ou ?) |
+| **Gauche — Épisodes** | Filtre (tous, sans résultat, réussis, ratés, non découpés, à vérifier) et recherche par numéro. Colonnes : n°, durée, résultat (✓ ✗ ?), état (▦ n segments, ◎ objets suivis, ⚠ à vérifier). Le détail (pas, pinces, indicateurs) est dans l'infobulle. |
+| **Centre — Vidéo** | La caméra de **tête en grand** (œil gauche, celle que voit le modèle) et les deux poignets dessous. Barre de lecture, vitesse ×0,25 à ×4. |
+| **Centre — Frise** | Sous la vidéo : segments colorés, sélection, pas corrigés par l'opérateur (tirets jaunes), curseur. Clic = aller à ce pas, glisser = sélectionner une plage, clic droit sur un segment = supprimer / reprendre ses bornes. |
+| **Centre — Signaux** | Les pinces par défaut. **＋ 2ᵉ graphique** pour un second groupe (angles des bras, buste, colonne, base, intervention). |
+| **Droite** | Sections repliables : **Épisode** (résultat en un clic, consigne), **Sélection sur la frise** (étiqueter ou rogner), **Sous-tâches**, **Détails du fichier**, **Journal**. |
+| **Bas** | Barre de messages : chaque action y est confirmée. |
 
 ## Raccourcis
 
 | Touche | Effet |
 |---|---|
 | Espace | Lecture / pause |
-| ← / → | Pas précédent / suivant |
-| Maj + ← / → | Recul / avance d'1 s |
+| ← / → · Maj + ← / → | Pas précédent / suivant · ± 1 s |
 | ↑ / ↓ | Épisode précédent / suivant |
-| I / O | Début / fin au pas courant (rognage ou segment) |
-| 1 à 9 | Choisir l'étiquette n° 1 à 9 |
-| T | Étiqueter [début, fin] avec l'étiquette choisie |
-| Suppr | Supprimer les épisodes sélectionnés |
+| I / O · Échap | Début / fin de la sélection · effacer la sélection |
+| **R / E / N** | Résultat : réussi / raté / inconnu (re-appuyer = effacer) |
+| 1 à 9 · T | Choisir l'étiquette · étiqueter la sélection |
+| Suppr | Supprimer les épisodes sélectionnés (ou le segment sélectionné dans la liste des segments) |
+| F1 ou ? | Aide |
 
-Ctrl ou Maj + clic dans la liste sélectionne plusieurs épisodes.
+Ctrl ou Maj + clic dans la liste sélectionne plusieurs épisodes. Les touches ne marchent pas pendant la saisie dans un champ de texte.
+
+Ouverture rapide : les résumés des épisodes sont gardés dans `<tâche>/.studio_cache.json` (relu seulement pour les épisodes modifiés).
 
 ## Modifier un dataset
 
@@ -51,9 +56,9 @@ Toutes les modifications destructives passent par la **corbeille** `<tâche>/.co
 
 - **Supprimer** (🗑 ou Suppr) : les épisodes sélectionnés vont dans la corbeille, puis les suivants sont **renumérotés sans trou** (`episode_0000`, `0001`…).
 - **Corbeille…** : restaurer un épisode supprimé. Il revient **à la fin** du dataset, avec un nouveau numéro. « Vider la corbeille » supprime définitivement les épisodes et les sauvegardes de rognage.
-- **Rogner** : placez le début (**I**) et la fin (**O**), puis « ✂ Rogner l'épisode ». Seuls les pas entre les deux sont gardés. L'ancien `data.json` et les images retirées sont rangés dans la corbeille (`…__rognage__episode_XXXX`). `success_step` et `takeover_step` sont recalés.
+- **Rogner** : sélectionnez la plage à garder (glisser sur la frise, ou **I** / **O**), puis « ✂ Rogner l'épisode ». Seuls les pas entre les deux sont gardés. L'ancien `data.json` et les images retirées sont rangés dans la corbeille (`…__rognage__episode_XXXX`). `success_step` et `takeover_step` sont recalés.
 - **Consigne** : modifiez le texte, puis appliquez-le à l'épisode courant, à la sélection ou à tous les épisodes.
-- **Issue** : réussi / raté / inconnu / non renseignée. Passer à « réussi » fixe `success_step` au dernier pas s'il est absent.
+- **Résultat** : boutons ✓ / ✗ / ? ou touches R / E / N, appliqué tout de suite (re-cliquer le résultat actif l'efface). « Réussi » fixe `success_step` au dernier pas s'il est absent.
 - **Renuméroter** : remet des numéros contigus sans rien supprimer, par exemple si un dataset commence à `episode_0001`.
 
 ## Découper en sous-tâches
@@ -109,7 +114,9 @@ Pour entraîner ensuite, voir `sim/experiments/train_real.sh` (config de donnée
 
 | Fichier | Rôle |
 |---|---|
-| `model.py` | Couche données, sans Qt : lecture, résumé, courbes, suppression / corbeille / renumérotation, rognage, consigne, issue. Testable seule. |
+| `model.py` | Couche données, sans Qt : lecture, résumé, courbes, suppression / corbeille / renumérotation, rognage, consigne, résultat, étiquettes et segments, cache des résumés. Testable seule. |
+| `timeline.py` | Frise sous la vidéo : segments, sélection, interventions, curseur |
+| `objects_ui.py`, `objects_worker.py` | Fenêtre Objets (optionnelle) et ses calculs, lancés dans un autre environnement |
 | `app.py` | Fenêtre principale (PySide6) |
 | `charts.py` | Graphique QPainter : séries, curseur, zone de rognage |
 | `theme.py` | Couleurs et feuille de style |

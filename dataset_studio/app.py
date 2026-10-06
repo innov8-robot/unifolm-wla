@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 import sys
+
+import numpy as np
 from pathlib import Path
 
 from PySide6.QtCore import QProcess, QProcessEnvironment, Qt, QTimer
@@ -19,13 +21,39 @@ from PySide6.QtGui import QColor, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QComboBox, QDialog, QDialogButtonBox,
                                QFileDialog, QFormLayout, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPlainTextEdit,
-                               QPushButton, QSlider, QSplitter, QTableWidget, QTableWidgetItem,
-                               QVBoxLayout, QWidget)
+                               QPushButton, QScrollArea, QSlider, QSplitter, QTableWidget, QTableWidgetItem,
+                               QToolButton, QVBoxLayout, QWidget)
 
 from .charts import SignalChart
+from .timeline import Timeline
 from .model import (CAMERA_LABELS, RL_TAGS, TaskDataset, find_tasks, guess_layout, load_doc, load_segments,
                     signals, summarize)
 from .theme import ACCENT, KO, MUTED, OK, QSS, TAG_COLORS, WARN
+
+GRIPPERS_GROUP = "Pinces (Dex1, 0 fermée → 5,4)"
+FILTERS = ["Tous les épisodes", "Sans résultat", "Réussis", "Ratés", "Non découpés", "À vérifier (⚠)"]
+HELP_TEXT = """LECTURE
+  Espace : lecture / pause        ← → : pas à pas        Maj + ← → : ± 1 s
+  ↑ ↓ : épisode précédent / suivant
+  Frise : clic = aller à ce pas · glisser = sélectionner une plage
+
+SÉLECTION (frise)
+  I / O : début / fin au pas courant      Échap : effacer la sélection
+  ✂ Rogner : ne garder que la sélection (l'original va à la corbeille)
+
+RÉSULTAT DE L'ESSAI
+  R : réussi      E : raté      N : inconnu      (re-cliquer le bouton actif = effacer)
+
+SOUS-TÂCHES
+  1 à 9 : choisir l'étiquette      T : étiqueter la sélection (ou du début jusqu'au pas courant)
+  Le début suivant se place juste après : I une fois, puis chiffre + T à chaque sous-tâche.
+  Clic droit sur un segment (frise ou graphique) : supprimer / reprendre ses bornes
+
+ÉPISODES
+  Ctrl / Maj + clic : sélection multiple      Suppr : supprimer (corbeille, renumérotation)
+  Filtre en haut de la liste : sans résultat, ratés, non découpés, à vérifier
+
+Les touches ne marchent pas pendant la saisie dans un champ de texte : cliquez sur la vidéo d'abord."""
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_DIR = REPO / "teleoperation/Tele_OP/xr_teleoperate/teleop/utils/data"
@@ -52,6 +80,41 @@ def button(text: str, kind: str | None = None, tip: str | None = None) -> QPushB
     if tip:
         b.setToolTip(tip)
     return b
+
+
+class Section(QWidget):
+    """Bloc à en-tête cliquable (▾ / ▸) : replier ce qu'on n'utilise pas."""
+
+    def __init__(self, title: str, collapsed: bool = False):
+        super().__init__()
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(4)
+        self.head = QToolButton()
+        self.head.setObjectName("SectionHead")
+        self.head.setText(title.upper())
+        self.head.setCheckable(True)
+        self.head.setChecked(not collapsed)
+        self.head.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.head.setArrowType(Qt.DownArrow if not collapsed else Qt.RightArrow)
+        self.head.setStyleSheet("QToolButton#SectionHead { border:none; color:#8b949e; font-size:11px; "
+                                "letter-spacing:1.5px; font-weight:600; padding:4px 0; }")
+        self.body = QFrame()
+        self.body.setObjectName("Panel")
+        self.inner = QVBoxLayout(self.body)
+        self.inner.setContentsMargins(10, 8, 10, 10)
+        self.inner.setSpacing(6)
+        self.body.setVisible(not collapsed)
+        self.head.toggled.connect(self._toggle)
+        lay.addWidget(self.head)
+        lay.addWidget(self.body)
+
+    def _toggle(self, on: bool):
+        self.body.setVisible(on)
+        self.head.setArrowType(Qt.DownArrow if on else Qt.RightArrow)
+
+    def __iter__(self):                    # permet « sec, sl = Section(...) »
+        return iter((self, self.inner))
 
 
 class CamView(QLabel):
@@ -173,7 +236,7 @@ class Studio(QMainWindow):
         v = QVBoxLayout(root)
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(0)
-        # en-tête
+        # en-tête : tâche, résumé, outils
         head = QFrame()
         head.setObjectName("Header")
         h = QHBoxLayout(head)
@@ -182,23 +245,25 @@ class Studio(QMainWindow):
         t.setObjectName("Title")
         h.addWidget(t)
         h.addSpacing(18)
-        self.task_combo = QComboBox()
-        self.task_combo.setMinimumWidth(220)
-        self.task_combo.currentIndexChanged.connect(self._task_changed)
         h.addWidget(QLabel("Tâche"))
+        self.task_combo = QComboBox()
+        self.task_combo.setMinimumWidth(240)
+        self.task_combo.currentIndexChanged.connect(self._task_changed)
         h.addWidget(self.task_combo)
-        self.path_lbl = QLabel("")
-        self.path_lbl.setStyleSheet(f"color:{MUTED}")
-        h.addWidget(self.path_lbl, 1)
-        b_open = button("Ouvrir…")
-        b_open.clicked.connect(self._choose_dir)
+        h.addSpacing(12)
+        self.summary_lbl = QLabel("")
+        self.summary_lbl.setStyleSheet(f"color:{MUTED}")
+        h.addWidget(self.summary_lbl, 1)
         b_obj = button("Objets…", "Quiet", "Encadrer un objet, détecter ses instances, choisir source / cible, suivre (optionnel)")
         b_obj.clicked.connect(self._objects)
-        h.addWidget(b_obj)
         b_reload = button("Recharger", "Quiet")
-        b_reload.clicked.connect(lambda: self.load_task(self.ds.path) if self.ds else None)
-        h.addWidget(b_reload)
-        h.addWidget(b_open)
+        b_reload.clicked.connect(lambda: self.load_task(self.ds.path, select=self.ep_name) if self.ds else None)
+        b_open = button("Ouvrir…", "Quiet")
+        b_open.clicked.connect(self._choose_dir)
+        b_help = button("?  Aide", None, "Raccourcis clavier et mode d'emploi (touche F1 ou ?)")
+        b_help.clicked.connect(self._help)
+        for w in (b_obj, b_reload, b_open, b_help):
+            h.addWidget(w)
         v.addWidget(head)
 
         body = QSplitter(Qt.Horizontal)
@@ -207,21 +272,35 @@ class Studio(QMainWindow):
 
         # --- gauche : épisodes
         left, ll = panel("Épisodes")
-        self.summary_lbl = QLabel("")
-        self.summary_lbl.setStyleSheet(f"color:{MUTED}")
-        ll.addWidget(self.summary_lbl)
-        self.table = QTableWidget(0, 6)
-        self.table.setHorizontalHeaderLabels(["ÉPISODE", "DURÉE", "PAS", "ISSUE", "PINCES G/D", "INDICATEURS"])
+        frow = QHBoxLayout()
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("n° …")
+        self.search.setMaximumWidth(80)
+        self.search.textChanged.connect(self._apply_filter)
+        self.filter_combo = QComboBox()
+        self.filter_combo.addItems(FILTERS)
+        self.filter_combo.currentIndexChanged.connect(self._apply_filter)
+        frow.addWidget(self.search)
+        frow.addWidget(self.filter_combo, 1)
+        ll.addLayout(frow)
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels(["N°", "DURÉE", "RÉSULTAT", "ÉTAT"])
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setStretchLastSection(True)
+        hh = self.table.horizontalHeader()
+        for c in range(3):
+            hh.setSectionResizeMode(c, QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(3, QHeaderView.Stretch)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.table.itemSelectionChanged.connect(self._selection_changed)
         ll.addWidget(self.table, 1)
+        legend = QLabel("✓ réussi · ✗ raté · ? inconnu    ▦ découpé · ◎ objets · ⚠ à vérifier")
+        legend.setStyleSheet(f"color:{MUTED}; font-size:11px")
+        ll.addWidget(legend)
         row = QHBoxLayout()
-        self.b_delete = button("🗑 Supprimer", "Danger", "Déplace les épisodes sélectionnés dans la corbeille et renumérote (Suppr)")
+        self.b_delete = button("🗑 Supprimer", "Danger", "Met les épisodes sélectionnés à la corbeille et renumérote (Suppr)")
         self.b_delete.clicked.connect(self._delete)
         b_trash = button("Corbeille…", "Quiet")
         b_trash.clicked.connect(self._trash)
@@ -237,24 +316,24 @@ class Studio(QMainWindow):
         ll.addWidget(self.b_convert)
         body.addWidget(left)
 
-        # --- centre : caméras + lecture + courbes
+        # --- centre : vidéo (tête en grand, poignets dessous), lecture, frise, graphiques
         center = QWidget()
         cv = QVBoxLayout(center)
         cv.setContentsMargins(0, 0, 0, 0)
-        cams_f, cams_l = panel("Caméras")
-        grid = QGridLayout()
-        grid.setSpacing(6)
-        self.cams = [CamView(f"caméra {i}") for i in range(4)]
-        for i, c in enumerate(self.cams):
-            grid.addWidget(c, i // 2, i % 2)
-        cams_l.addLayout(grid, 1)
-        # transport
+        cams_f, cams_l = panel("Vidéo")
+        self.cam_head = CamView("Tête")
+        self.cam_wl, self.cam_wr = CamView("Poignet gauche"), CamView("Poignet droit")
+        cams_l.addWidget(self.cam_head, 3)
+        wr = QHBoxLayout()
+        wr.addWidget(self.cam_wl)
+        wr.addWidget(self.cam_wr)
+        cams_l.addLayout(wr, 2)
         tr = QHBoxLayout()
-        self.b_first = button("⏮", "Quiet")
-        self.b_back = button("◀", "Quiet")
-        self.b_play = button("▶  Lecture", "Run")
-        self.b_fwd = button("▶", "Quiet")
-        self.b_last = button("⏭", "Quiet")
+        self.b_first = button("⏮", "Quiet", "Début de l'épisode")
+        self.b_back = button("◀", "Quiet", "Pas précédent (←)")
+        self.b_play = button("▶  Lecture", "Run", "Lecture / pause (Espace)")
+        self.b_fwd = button("▶", "Quiet", "Pas suivant (→)")
+        self.b_last = button("⏭", "Quiet", "Fin de l'épisode")
         self.b_first.clicked.connect(lambda: self.seek(0))
         self.b_back.clicked.connect(lambda: self.seek(self.frame - 1))
         self.b_fwd.clicked.connect(lambda: self.seek(self.frame + 1))
@@ -264,20 +343,22 @@ class Studio(QMainWindow):
         self.speed_combo.addItems(["×0.25", "×0.5", "×1", "×2", "×4"])
         self.speed_combo.setCurrentIndex(2)
         self.speed_combo.currentIndexChanged.connect(self._speed_changed)
-        self.slider = QSlider(Qt.Horizontal)
-        self.slider.valueChanged.connect(self._slider_moved)
         self.frame_lbl = QLabel("—")
         self.frame_lbl.setObjectName("Mono")
-        self.frame_lbl.setMinimumWidth(190)
         for w in (self.b_first, self.b_back, self.b_play, self.b_fwd, self.b_last, self.speed_combo):
             tr.addWidget(w)
-        tr.addWidget(self.slider, 1)
+        tr.addStretch()
         tr.addWidget(self.frame_lbl)
         cams_l.addLayout(tr)
+        self.timeline = Timeline()
+        self.timeline.seek.connect(self.seek)
+        self.timeline.selection.connect(self._timeline_selection)
+        self.timeline.segment_action.connect(self._chart_segment_action)
+        cams_l.addWidget(self.timeline)
         cv.addWidget(cams_f, 3)
         charts_f, charts_l = panel("Signaux")
-        self.charts, self.chart_combos = [], []
-        for default in ("Bras droit — état", "Pinces (Dex1, 0 fermée → 5,4)"):
+        self.charts, self.chart_combos, self.chart_rows = [], [], []
+        for i, default in enumerate((GRIPPERS_GROUP, "Bras droit — état")):
             r = QHBoxLayout()
             cb = QComboBox()
             cb.setMinimumWidth(260)
@@ -288,73 +369,94 @@ class Studio(QMainWindow):
             cb.currentTextChanged.connect(lambda txt, c=ch: self._chart_group(c, txt))
             r.addWidget(cb)
             r.addStretch()
-            charts_l.addLayout(r)
-            charts_l.addWidget(ch, 1)
+            if i == 0:
+                self.b_chart2 = button("＋ 2ᵉ graphique", "Quiet", "Afficher un second graphique (angles des bras, base, colonne…)")
+                self.b_chart2.clicked.connect(self._toggle_chart2)
+                r.addWidget(self.b_chart2)
+            holder = QWidget()
+            hl = QVBoxLayout(holder)
+            hl.setContentsMargins(0, 0, 0, 0)
+            hl.addLayout(r)
+            hl.addWidget(ch, 1)
+            charts_l.addWidget(holder, 1)
             self.charts.append(ch)
             self.chart_combos.append(cb)
+            self.chart_rows.append(holder)
+        self.chart_rows[1].setVisible(False)
         cv.addWidget(charts_f, 2)
         body.addWidget(center)
 
-        # --- droite : édition
-        right, rl = panel("Épisode")
+        # --- droite : sections repliables
+        rpanel = QWidget()
+        rl = QVBoxLayout(rpanel)
+        rl.setContentsMargins(4, 0, 4, 0)
+        rl.setSpacing(6)
+        # ÉPISODE : résultat + consigne
+        sec, sl = Section("Épisode")
         self.ep_lbl = QLabel("—")
         self.ep_lbl.setObjectName("Title")
-        rl.addWidget(self.ep_lbl)
-        rl.addWidget(QLabel("Consigne (instruction du modèle)"))
+        sl.addWidget(self.ep_lbl)
+        sl.addWidget(QLabel("Résultat de l'essai"))
+        orow = QHBoxLayout()
+        self.out_btns = {}
+        for oc, txt, key, tip in (("success", "✓ Réussi", "R", "Essai réussi (R)"),
+                                  ("failure", "✗ Raté", "E", "Essai raté (E)"),
+                                  ("unknown", "? Inconnu", "N", "Résultat inconnu (N)")):
+            b = button(f"{txt}  [{key}]", None, tip)
+            b.setCheckable(True)
+            b.clicked.connect(lambda _c=False, o=oc: self._set_outcome(o))
+            self.out_btns[oc] = b
+            orow.addWidget(b)
+        sl.addLayout(orow)
+        sl.addSpacing(4)
+        sl.addWidget(QLabel("Consigne (instruction du modèle)"))
         self.goal_edit = QLineEdit()
-        rl.addWidget(self.goal_edit)
+        sl.addWidget(self.goal_edit)
         gr = QHBoxLayout()
-        b_goal1 = button("Cet épisode")
-        b_goal_sel = button("Sélection")
-        b_goal_all = button("Tous", "Danger")
+        gr.addWidget(QLabel("Appliquer à :"))
+        b_goal1 = button("cet épisode", None)
+        b_goal_sel = button("la sélection", None, "Les épisodes sélectionnés dans la liste (Ctrl / Maj + clic)")
+        b_goal_all = button("tous…", "Danger", "Tous les épisodes de la tâche (confirmation demandée)")
         b_goal1.clicked.connect(lambda: self._set_goal("one"))
         b_goal_sel.clicked.connect(lambda: self._set_goal("sel"))
         b_goal_all.clicked.connect(lambda: self._set_goal("all"))
         for b in (b_goal1, b_goal_sel, b_goal_all):
             gr.addWidget(b)
-        rl.addLayout(gr)
-        rl.addSpacing(8)
-        rl.addWidget(QLabel("Issue de l'essai"))
-        orow = QHBoxLayout()
-        self.outcome_combo = QComboBox()
-        self.outcome_combo.addItems(["— (non renseignée)", "success", "failure", "unknown"])
-        b_out = button("Appliquer")
-        b_out.clicked.connect(self._set_outcome)
-        orow.addWidget(self.outcome_combo, 1)
-        orow.addWidget(b_out)
-        rl.addLayout(orow)
-        rl.addSpacing(8)
-        h2 = QLabel("ROGNAGE")
-        h2.setObjectName("H2")
-        rl.addWidget(h2)
-        self.trim_lbl = QLabel("début — · fin —")
+        sl.addLayout(gr)
+        rl.addWidget(sec)
+        # SÉLECTION SUR LA FRISE : rogner ou étiqueter
+        sec, sl = Section("Sélection sur la frise")
+        self.trim_lbl = QLabel("glissez sur la frise, ou I / O")
         self.trim_lbl.setObjectName("Mono")
-        rl.addWidget(self.trim_lbl)
+        sl.addWidget(self.trim_lbl)
         trow = QHBoxLayout()
-        b_in = button("Début ici  [I]")
-        b_out2 = button("Fin ici  [O]")
-        b_clear = button("Effacer", "Quiet")
+        b_in = button("Début  [I]", None)
+        b_out2 = button("Fin  [O]", None)
+        b_clear = button("Effacer [Échap]", None)
         b_in.clicked.connect(self.set_in)
         b_out2.clicked.connect(self.set_out)
         b_clear.clicked.connect(self.clear_marks)
-        trow.addWidget(b_in)
-        trow.addWidget(b_out2)
-        trow.addWidget(b_clear)
-        rl.addLayout(trow)
-        self.b_trim = button("✂ Rogner l'épisode", "Danger", "Garde [début, fin] ; l'original va dans la corbeille")
+        for b in (b_in, b_out2, b_clear):
+            trow.addWidget(b)
+        sl.addLayout(trow)
+        arow = QHBoxLayout()
+        self.b_tag = button("🏷 Étiqueter  [T]", None, "Crée un segment avec l'étiquette choisie ; le début suivant est placé juste après")
+        self.b_tag.clicked.connect(self._tag_segment)
+        self.b_trim = button("✂ Rogner l'épisode", "Danger", "Ne garder que la sélection ; l'original va dans la corbeille")
         self.b_trim.clicked.connect(self._trim)
-        rl.addWidget(self.b_trim)
-        rl.addSpacing(8)
-        h5 = QLabel("DÉCOUPAGE EN SOUS-TÂCHES")
-        h5.setObjectName("H2")
-        rl.addWidget(h5)
+        arow.addWidget(self.b_tag, 1)
+        arow.addWidget(self.b_trim)
+        sl.addLayout(arow)
+        rl.addWidget(sec)
+        # SOUS-TÂCHES
+        sec, sl = Section("Sous-tâches (étiquettes)")
         tgrow = QHBoxLayout()
         self.tag_combo = QComboBox()
         self.tag_combo.setMinimumWidth(170)
         self.tag_combo.currentIndexChanged.connect(self._tag_changed)
-        b_tag_new = button("＋", "Quiet", "Nouvelle étiquette (nom + consigne du modèle)")
-        b_tag_edit = button("✎", "Quiet", "Renommer l'étiquette ou modifier sa consigne")
-        b_tag_del = button("−", "Quiet", "Supprimer l'étiquette (et ses segments, après confirmation)")
+        b_tag_new = button("＋", None, "Nouvelle étiquette (nom + consigne du modèle)")
+        b_tag_edit = button("✎", None, "Renommer l'étiquette ou modifier sa consigne")
+        b_tag_del = button("−", None, "Supprimer l'étiquette (et ses segments, après confirmation)")
         b_tag_new.clicked.connect(self._new_tag)
         b_tag_edit.clicked.connect(self._edit_tag)
         b_tag_del.clicked.connect(self._del_tag)
@@ -362,37 +464,30 @@ class Studio(QMainWindow):
         for b in (b_tag_new, b_tag_edit, b_tag_del):
             b.setFixedWidth(40)
             tgrow.addWidget(b)
-        rl.addLayout(tgrow)
+        sl.addLayout(tgrow)
         self.tag_instr_lbl = QLabel("")
         self.tag_instr_lbl.setWordWrap(True)
         self.tag_instr_lbl.setStyleSheet(f"color:{MUTED}")
-        rl.addWidget(self.tag_instr_lbl)
-        keys_lbl = QLabel("1-9 : choisir l'étiquette · I : début · T : poser jusqu'au pas courant · clic droit sur une bande : supprimer")
-        keys_lbl.setWordWrap(True)
-        keys_lbl.setStyleSheet(f"color:{MUTED}; font-size:11px")
-        rl.addWidget(keys_lbl)
-        self.b_tag = button("🏷 Étiqueter [début, fin]  [T]", None, "Crée un segment avec l'étiquette choisie ; le début suivant est placé juste après")
-        self.b_tag.clicked.connect(self._tag_segment)
-        rl.addWidget(self.b_tag)
+        sl.addWidget(self.tag_instr_lbl)
         self.seg_list = QListWidget()
-        self.seg_list.setMaximumHeight(120)
+        self.seg_list.setMaximumHeight(110)
         self.seg_list.itemDoubleClicked.connect(self._goto_segment)
         self.seg_list.setToolTip("Double-clic : aller au segment · Suppr : supprimer le segment sélectionné")
-        rl.addWidget(self.seg_list)
+        sl.addWidget(self.seg_list)
         srow = QHBoxLayout()
-        b_seg_del = button("Supprimer le segment", "Quiet")
+        b_seg_del = button("Supprimer le segment", None)
         b_seg_del.clicked.connect(self._del_segment)
-        b_rl = button("＋ bon / mauvais (RL)", "Quiet",
+        b_rl = button("＋ bon / mauvais", None,
                       "Étiquettes d'avantage manuel : remplacent le jugement du modèle de valeur de RECAP")
         b_rl.clicked.connect(self._rl_tags)
         srow.addWidget(b_seg_del)
         srow.addStretch()
         srow.addWidget(b_rl)
-        rl.addLayout(srow)
+        sl.addLayout(srow)
         self.tag_usage_lbl = QLabel("")
         self.tag_usage_lbl.setWordWrap(True)
         self.tag_usage_lbl.setObjectName("Mono")
-        rl.addWidget(self.tag_usage_lbl)
+        sl.addWidget(self.tag_usage_lbl)
         erow = QHBoxLayout()
         b_exp_tag = button("Exporter par étiquette…", None, "Un dossier de tâche par étiquette : <tâche>__<étiquette>")
         b_exp_all = button("Exporter tout…", None, "Un seul dossier <tâche>__segments, une consigne par étiquette")
@@ -400,23 +495,35 @@ class Studio(QMainWindow):
         b_exp_all.clicked.connect(lambda: self._export("all"))
         erow.addWidget(b_exp_tag)
         erow.addWidget(b_exp_all)
-        rl.addLayout(erow)
-        rl.addSpacing(8)
-        h3 = QLabel("EN-TÊTE (info)")
-        h3.setObjectName("H2")
-        rl.addWidget(h3)
+        sl.addLayout(erow)
+        rl.addWidget(sec)
+        # DÉTAILS et JOURNAL : repliés
+        sec, sl = Section("Détails du fichier", collapsed=True)
         self.info_text = QPlainTextEdit()
         self.info_text.setReadOnly(True)
-        rl.addWidget(self.info_text, 1)
-        h4 = QLabel("JOURNAL")
-        h4.setObjectName("H2")
-        rl.addWidget(h4)
+        self.info_text.setMinimumHeight(180)
+        sl.addWidget(self.info_text)
+        rl.addWidget(sec)
+        sec, sl = Section("Journal", collapsed=True)
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(2000)
-        rl.addWidget(self.log, 1)
-        body.addWidget(right)
-        body.setSizes([380, 900, 360])
+        self.log.setMinimumHeight(160)
+        sl.addWidget(self.log)
+        rl.addWidget(sec)
+        rl.addStretch()
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setWidget(rpanel)
+        scroll.setMinimumWidth(470)
+        body.addWidget(scroll)
+        body.setSizes([290, 840, 470])
+        self.status = QLabel("")
+        self.statusBar().addWidget(self.status, 1)
+        self._msg_timer = QTimer(self)
+        self._msg_timer.setSingleShot(True)
+        self._msg_timer.timeout.connect(lambda: self.status.setText(""))
 
     def _shortcuts(self):
         def sc(key, fn):
@@ -431,14 +538,35 @@ class Studio(QMainWindow):
         sc(Qt.Key_Down, lambda: self._step_episode(+1))
         sc(Qt.Key_I, self.set_in)
         sc(Qt.Key_O, self.set_out)
+        sc(Qt.Key_Escape, self.clear_marks)
         sc(Qt.Key_T, self._tag_segment)
+        sc(Qt.Key_R, lambda: self._set_outcome("success"))
+        sc(Qt.Key_E, lambda: self._set_outcome("failure"))
+        sc(Qt.Key_N, lambda: self._set_outcome("unknown"))
+        sc(Qt.Key_F1, self._help)
+        sc("?", self._help)
         for k in range(1, 10):
             sc(str(k), lambda k=k: self.tag_combo.setCurrentIndex(k - 1) if k <= self.tag_combo.count() else None)
         sc(Qt.Key_Delete, self._delete_key)
 
+    def _help(self):
+        QMessageBox.information(self, "Aide — Dataset Studio", HELP_TEXT)
+
+    def _toggle_chart2(self):
+        vis = not self.chart_rows[1].isVisible()
+        self.chart_rows[1].setVisible(vis)
+        self.b_chart2.setText("− 2ᵉ graphique" if vis else "＋ 2ᵉ graphique")
+
+    def _timeline_selection(self, a, b):
+        self.mark_in, self.mark_out = a, b
+        self._update_marks()
+
     # ------------------------------------------------------------------ chargement
     def say(self, msg: str, color: str | None = None):
         self.log.appendHtml(f'<span style="color:{color or "#cdd6e0"}">{msg}</span>')
+        self.status.setText(msg)
+        self.status.setStyleSheet(f"color:{color or '#cdd6e0'}; padding:2px 8px;")
+        self._msg_timer.start(7000)
 
     def _choose_dir(self):
         d = QFileDialog.getExistingDirectory(self, "Dossier de tâche ou dossier de tâches", str(DEFAULT_DIR))
@@ -468,42 +596,83 @@ class Studio(QMainWindow):
     def load_task(self, path: Path, select: str | None = None):
         self.timer.stop()
         self.ds = TaskDataset(path)
-        self.path_lbl.setText(str(path))
-        eps = self.ds.episodes()
-        self.table.setRowCount(len(eps))
-        tot = 0
-        for r, ep in enumerate(eps):
-            s = summarize(ep)
-            nseg = len(load_segments(ep))
-            if nseg:
-                s.flags.insert(0, f"{nseg} seg")
-            tot += s.n
-            out_col = {"success": OK, "failure": KO, "unknown": WARN}.get(s.outcome, MUTED)
-            cells = [s.name.replace("episode_", ""), f"{s.seconds:5.1f} s", str(s.n), s.outcome or "—",
-                     f"{'●' if s.left_gripper_used else '○'} / {'●' if s.right_gripper_used else '○'}",
-                     ", ".join(s.flags) if not s.error else s.error]
-            for c, txt in enumerate(cells):
-                it = QTableWidgetItem(txt)
-                if c == 0:
-                    it.setData(Qt.UserRole, s.name)
-                if c == 3:
-                    it.setForeground(QColor(out_col))
-                if c == 5 and (s.error or "manquantes" in txt):
-                    it.setForeground(QColor(KO))
-                self.table.setItem(r, c, it)
+        self.task_combo.setToolTip(str(path))
+        sums = self.ds.summaries()
+        self.table.setRowCount(len(sums))
+        tot, n_ok, n_ko, n_none = 0, 0, 0, 0
+        for r, s_ in enumerate(sums):
+            self._fill_row(r, s_)
+            tot += s_.n
+            n_ok += s_.outcome == "success"
+            n_ko += s_.outcome == "failure"
+            n_none += not s_.outcome
         self._refresh_tags()
         n_tr = len(self.ds.trashed())
-        self.summary_lbl.setText(f"{len(eps)} épisodes · {tot} pas · {tot / FPS / 60:.1f} min"
-                                 + (f" · corbeille : {n_tr}" if n_tr else ""))
-        if eps:
+        self.summary_lbl.setText(f"{len(sums)} épisodes · {tot / FPS / 60:.1f} min · ✓ {n_ok} · ✗ {n_ko} · sans résultat {n_none}"
+                                 + (f" · corbeille {n_tr}" if n_tr else ""))
+        self._apply_filter()
+        if sums:
             row = 0
             if select:
                 for r in range(self.table.rowCount()):
                     if self.table.item(r, 0).data(Qt.UserRole) == select:
                         row = r
-            self.table.selectRow(row)
+            if self.table.item(row, 0).data(Qt.UserRole) == self.ep_name:
+                self.table.blockSignals(True)
+                self.table.selectRow(row)
+                self.table.blockSignals(False)
+            else:
+                self.table.selectRow(row)
         else:
             self.doc = None
+
+    def _fill_row(self, r: int, s_):
+        ep = self.ds.path / s_.name
+        nseg = len(load_segments(ep))
+        has_obj = (ep / "objects").is_dir() and any((ep / "objects").glob("*_tracks.npz"))
+        warn = bool(s_.error or s_.missing_images or "< 1 s" in s_.flags or "VIDE" in s_.flags)
+        res = {"success": "✓", "failure": "✗", "unknown": "?"}.get(s_.outcome, "·")
+        state = " ".join(x for x in (f"▦ {nseg}" if nseg else "", "◎" if has_obj else "", "⚠" if warn else "") if x)
+        tip = (f"{s_.name} · {s_.n} pas · {s_.seconds:.1f} s · pinces G/D "
+               f"{'●' if s_.left_gripper_used else '○'}/{'●' if s_.right_gripper_used else '○'}"
+               + (f"\nindicateurs : {', '.join(s_.flags)}" if s_.flags else "")
+               + (f"\n{s_.error}" if s_.error else "")
+               + (f"\n{nseg} segment(s)" if nseg else ""))
+        cells = [s_.name.replace("episode_", ""), f"{s_.seconds:5.1f} s", res, state]
+        for c, txt in enumerate(cells):
+            it = QTableWidgetItem(txt)
+            it.setToolTip(tip)
+            if c == 0:
+                it.setData(Qt.UserRole, s_.name)
+                it.setData(Qt.UserRole + 1, {"outcome": s_.outcome, "nseg": nseg, "warn": warn})
+            if c == 2:
+                it.setTextAlignment(Qt.AlignCenter)
+                it.setForeground(QColor({"✓": OK, "✗": KO, "?": WARN}.get(res, MUTED)))
+            if c == 3 and warn:
+                it.setForeground(QColor(KO))
+            self.table.setItem(r, c, it)
+
+    def _refresh_row(self, name: str):
+        """Met à jour une seule ligne (après un changement de résultat, de segments…)."""
+        for r in range(self.table.rowCount()):
+            if self.table.item(r, 0).data(Qt.UserRole) == name:
+                self.table.blockSignals(True)
+                self._fill_row(r, summarize(self.ds.path / name))
+                self.table.blockSignals(False)
+                break
+        self._apply_filter()
+
+    def _apply_filter(self, *_):
+        f = self.filter_combo.currentIndex() if hasattr(self, "filter_combo") else 0
+        q = self.search.text().strip().lstrip("0") if hasattr(self, "search") else ""
+        for r in range(self.table.rowCount()):
+            it = self.table.item(r, 0)
+            meta = it.data(Qt.UserRole + 1) or {}
+            ok = {0: True, 1: not meta.get("outcome"), 2: meta.get("outcome") == "success",
+                  3: meta.get("outcome") == "failure", 4: not meta.get("nseg"), 5: meta.get("warn")}[f]
+            if q:
+                ok = ok and it.text().lstrip("0").startswith(q)
+            self.table.setRowHidden(r, not ok)
 
     def select_episode(self, name: str) -> bool:
         """Sélectionne un épisode dans la liste SANS recharger la tâche (qui relit tous les data.json)."""
@@ -543,8 +712,16 @@ class Studio(QMainWindow):
         self.mark_in = self.mark_out = None
         self.ep_lbl.setText(name)
         self.goal_edit.setText(self.doc.get("text", {}).get("goal", ""))
-        oc = self.doc.get("info", {}).get("outcome")
-        self.outcome_combo.setCurrentIndex({"success": 1, "failure": 2, "unknown": 3}.get(oc, 0))
+        self._show_outcome(self.doc.get("info", {}).get("outcome"))
+        keys = sorted(self.doc["data"][0]["colors"]) if self.doc["data"] else []
+        labels = CAMERA_LABELS.get(self.layout_name, {})
+        # tête : l'œil GAUCHE seulement (celui que voit le modèle) ; l'œil droit n'est plus affiché
+        head = next((k for k in keys if labels.get(k, "").startswith("Tête") and "droit" not in labels.get(k, "")),
+                    keys[0] if keys else None)
+        wl = next((k for k in keys if labels.get(k) == "Poignet gauche"), None)
+        wrr = next((k for k in keys if labels.get(k) == "Poignet droit"), None)
+        self.cam_keys = [(self.cam_head, head, "Tête (œil gauche, vue du modèle)"),
+                         (self.cam_wl, wl, "Poignet gauche"), (self.cam_wr, wrr, "Poignet droit")]
         info = {k: v for k, v in self.doc.get("info", {}).items() if k not in ("joint_names", "tactile_names", "audio", "depth")}
         self.info_text.setPlainText(json.dumps(info, indent=1, ensure_ascii=False))
         self.sig = signals(self.doc) if self.doc["data"] else {}
@@ -556,10 +733,9 @@ class Studio(QMainWindow):
             cb.blockSignals(False)
             cb.setCurrentText(prev if prev in self.sig else cb.property("default"))
             self._chart_group(ch, cb.currentText())
-        n = self._n()
-        self.slider.blockSignals(True)
-        self.slider.setRange(0, max(0, n - 1))
-        self.slider.blockSignals(False)
+        inter = [st.get("intervention", 0) for st in self.doc["data"]]
+        self.timeline.set_episode(self._n(), self._segment_bands(),
+                                  np.asarray(inter, float) if any(inter) else None)
         self._update_marks()
         self._refresh_segments()
         if self.obj_dlg is not None and self.obj_dlg.isVisible():
@@ -582,25 +758,16 @@ class Studio(QMainWindow):
             return
         self.frame = max(0, min(n - 1, int(k)))
         st = self.doc["data"][self.frame]
-        labels = CAMERA_LABELS.get(self.layout_name, {})
-        keys = sorted(st["colors"])
-        for i, cam in enumerate(self.cams):
-            if i < len(keys):
-                cam.setVisible(True)
-                cam.show_image(self.ds.path / self.ep_name / st["colors"][keys[i]], labels.get(keys[i], keys[i]))
-            else:
-                cam.setVisible(False)
-        self.slider.blockSignals(True)
-        self.slider.setValue(self.frame)
-        self.slider.blockSignals(False)
-        self.frame_lbl.setText(f"pas {self.frame:4d}/{n - 1}   {self.frame / FPS:6.2f} s")
+        for cam, key, title in getattr(self, "cam_keys", []):
+            cam.setVisible(key is not None)
+            if key is not None:
+                cam.show_image(self.ds.path / self.ep_name / st["colors"][key], title)
+        self.timeline.set_cursor(self.frame)
+        self.frame_lbl.setText(f"pas {self.frame:4d} / {n - 1}    {self.frame / FPS:6.2f} s / {(n - 1) / FPS:.1f} s")
         if self.obj_dlg is not None and self.obj_dlg.isVisible():
             self.obj_dlg.refresh()
         for ch in self.charts:
             ch.set_cursor(self.frame)
-
-    def _slider_moved(self, v):
-        self.seek(v)
 
     def toggle_play(self):
         if self.timer.isActive():
@@ -637,11 +804,17 @@ class Studio(QMainWindow):
         self._update_marks()
 
     def _update_marks(self):
-        a = "—" if self.mark_in is None else f"{self.mark_in} ({self.mark_in / FPS:.2f} s)"
-        b = "—" if self.mark_out is None else f"{self.mark_out} ({self.mark_out / FPS:.2f} s)"
-        self.trim_lbl.setText(f"début {a} · fin {b}")
+        if self.mark_in is None and self.mark_out is None:
+            self.trim_lbl.setText("aucune — glissez sur la frise, ou I / O")
+        else:
+            a = "début" if self.mark_in is None else f"{self.mark_in}"
+            b = "pas courant" if self.mark_out is None else f"{self.mark_out}"
+            dur = (f"  ({(self.mark_out - self.mark_in + 1) / FPS:.1f} s)"
+                   if self.mark_in is not None and self.mark_out is not None else "")
+            self.trim_lbl.setText(f"{a} → {b}{dur}")
         for ch in self.charts:
             ch.set_marks(self.mark_in, self.mark_out)
+        self.timeline.set_marks(self.mark_in, self.mark_out)
 
     def _trim(self):
         if not self.doc or (self.mark_in is None and self.mark_out is None):
@@ -674,14 +847,22 @@ class Studio(QMainWindow):
         self.ds.set_goal(names, goal)
         self.say(f"consigne « {goal} » appliquée à {len(names)} épisode(s)", OK)
 
-    def _set_outcome(self):
-        if not self.ep_name:
+    def _show_outcome(self, oc):
+        for k, b in self.out_btns.items():
+            b.setChecked(k == oc)
+
+    def _set_outcome(self, oc: str):
+        """Clic ou touche R / E / N : appliqué tout de suite ; re-cliquer le résultat actif l'efface."""
+        if not self.ep_name or not self.doc:
             return
-        i = self.outcome_combo.currentIndex()
-        oc = [None, "success", "failure", "unknown"][i]
-        self.ds.set_outcome(self.ep_name, oc)
-        self.say(f"{self.ep_name} : issue = {oc or '—'}", OK)
-        self.load_task(self.ds.path, select=self.ep_name)
+        cur = self.doc.get("info", {}).get("outcome")
+        new = None if cur == oc else oc
+        self.ds.set_outcome(self.ep_name, new)
+        self.doc.setdefault("info", {})["outcome"] = new
+        self._show_outcome(new)
+        self._refresh_row(self.ep_name)
+        lab = {"success": "réussi", "failure": "raté", "unknown": "inconnu"}
+        self.say(f"{self.ep_name} : résultat {lab[new] if new else 'effacé'}", OK)
 
     def _delete(self):
         names = self._selected_names()
@@ -782,6 +963,7 @@ class Studio(QMainWindow):
         bands = self._segment_bands()
         for ch in self.charts:
             ch.set_segments(bands)
+        self.timeline.set_segments(bands)
 
     def _new_tag(self):
         if not self.ds:
@@ -837,6 +1019,8 @@ class Studio(QMainWindow):
             return
         n = self.ds.remove_tag(name, with_segments=True)
         self.say(f"étiquette « {name} » supprimée" + (f", avec ses {n} segment(s)" if n else ""), OK)
+        if n:
+            self.load_task(self.ds.path, select=self.ep_name)    # pastilles ▦ de tous les épisodes
         self._refresh_tags()
         self._refresh_segments()
 
@@ -853,6 +1037,7 @@ class Studio(QMainWindow):
             self.say(f"étiqueter : {e}", KO)
             return
         self.say(f"🏷 {self.ep_name} : {tag} {seg['start']} → {seg['end']}", OK)
+        self._refresh_row(self.ep_name)
         nxt = seg["end"] + 1
         self.mark_in, self.mark_out = (nxt if nxt < self._n() else None), None
         self._update_marks()
@@ -879,6 +1064,7 @@ class Studio(QMainWindow):
             self.say(f"segment {s['tag']} {s['start']} → {s['end']} supprimé", OK)
             self._refresh_segments()
             self._refresh_tags()
+            self._refresh_row(self.ep_name)
         else:
             self.mark_in, self.mark_out = s["start"], s["end"]
             self._update_marks()
@@ -900,6 +1086,7 @@ class Studio(QMainWindow):
         self.say(f"segment {s['tag']} {s['start']} → {s['end']} supprimé", OK)
         self._refresh_segments()
         self._refresh_tags()
+        self._refresh_row(self.ep_name)
 
     def _export(self, mode: str):
         if not self.ds:

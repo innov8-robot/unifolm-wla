@@ -36,4 +36,6 @@ QPlainTextEdit {{ background: #0a0d12; border: 1px solid #1c2430; border-radius:
 QSlider::groove:horizontal {{ height: 6px; background: #1c2430; border-radius: 3px; }}
 QSlider::handle:horizontal {{ background: {ACCENT}; width: 12px; margin: -5px 0; border-radius: 6px; }}
 QSplitter::handle {{ background: #0e1116; }}
+QPushButton:checked, QPushButton#Quiet:checked {{ background: #12332d; border: 1px solid {ACCENT}; color: {ACCENT}; font-weight: 700; }}
+QStatusBar {{ background: #0a0d12; border-top: 1px solid #1c2430; }}
 """
