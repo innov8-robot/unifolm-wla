@@ -17,9 +17,9 @@ import numpy as np
 from pathlib import Path
 
 from PySide6.QtCore import QProcess, QProcessEnvironment, Qt, QTimer
-from PySide6.QtGui import QColor, QKeySequence, QPixmap, QShortcut
+from PySide6.QtGui import QColor, QImage, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QComboBox, QDialog, QDialogButtonBox,
-                               QFileDialog, QFormLayout, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel,
+                               QCheckBox, QFileDialog, QFormLayout, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPlainTextEdit,
                                QPushButton, QScrollArea, QSlider, QSplitter, QTableWidget, QTableWidgetItem,
                                QToolButton, QVBoxLayout, QWidget)
@@ -126,9 +126,19 @@ class CamView(QLabel):
         self._pix = None
         self.title = title
 
-    def show_image(self, path: Path | None, title: str):
+    def show_image(self, path: Path | None, title: str, masks=None):
+        """``masks`` : liste de (masque booléen H×W, couleur RGB) dessinés en transparence (objets suivis)."""
         self.title = title
         self._pix = QPixmap(str(path)) if path is not None and path.exists() else None
+        if self._pix is not None and masks:
+            p = QPainter(self._pix)
+            for m, rgb in masks:
+                if m is None or not m.any() or m.shape != (self._pix.height(), self._pix.width()):
+                    continue
+                a = np.zeros(m.shape + (4,), np.uint8)
+                a[m] = (*rgb, 120)
+                p.drawImage(0, 0, QImage(a.data, a.shape[1], a.shape[0], 4 * a.shape[1], QImage.Format_RGBA8888))
+            p.end()
         self._render()
 
     def _render(self):
@@ -225,6 +235,7 @@ class Studio(QMainWindow):
         self.speed = 1.0
         self.proc = None
         self.obj_dlg = None
+        self.obj_tracks = None            # (masques compressés (T, 2, H, W/8), largeur) de l'épisode courant
         self._build()
         self._shortcuts()
         self.open_root(start)
@@ -347,6 +358,11 @@ class Studio(QMainWindow):
         self.frame_lbl.setObjectName("Mono")
         for w in (self.b_first, self.b_back, self.b_play, self.b_fwd, self.b_last, self.speed_combo):
             tr.addWidget(w)
+        self.cb_objects = QCheckBox("objets suivis")
+        self.cb_objects.setChecked(True)
+        self.cb_objects.setToolTip("Afficher sur la caméra de tête les masques suivis : vert = source, rouge = cible")
+        self.cb_objects.toggled.connect(lambda _on: self.seek(self.frame))
+        tr.addWidget(self.cb_objects)
         tr.addStretch()
         tr.addWidget(self.frame_lbl)
         cams_l.addLayout(tr)
@@ -408,6 +424,9 @@ class Studio(QMainWindow):
             self.out_btns[oc] = b
             orow.addWidget(b)
         sl.addLayout(orow)
+        self.obj_lbl = QLabel("")
+        self.obj_lbl.setWordWrap(True)
+        sl.addWidget(self.obj_lbl)
         sl.addSpacing(4)
         sl.addWidget(QLabel("Consigne (instruction du modèle)"))
         self.goal_edit = QLineEdit()
@@ -733,6 +752,7 @@ class Studio(QMainWindow):
             cb.blockSignals(False)
             cb.setCurrentText(prev if prev in self.sig else cb.property("default"))
             self._chart_group(ch, cb.currentText())
+        self._load_objects()
         inter = [st.get("intervention", 0) for st in self.doc["data"]]
         self.timeline.set_episode(self._n(), self._segment_bands(),
                                   np.asarray(inter, float) if any(inter) else None)
@@ -761,9 +781,10 @@ class Studio(QMainWindow):
         for cam, key, title in getattr(self, "cam_keys", []):
             cam.setVisible(key is not None)
             if key is not None:
-                cam.show_image(self.ds.path / self.ep_name / st["colors"][key], title)
+                masks = self._object_masks(self.frame) if cam is self.cam_head else None
+                cam.show_image(self.ds.path / self.ep_name / st["colors"][key], title, masks)
         self.timeline.set_cursor(self.frame)
-        self.frame_lbl.setText(f"pas {self.frame:4d} / {n - 1}    {self.frame / FPS:6.2f} s / {(n - 1) / FPS:.1f} s")
+        self.frame_lbl.setText(f"pas {self.frame} / {n - 1} · {self.frame / FPS:.1f} s / {(n - 1) / FPS:.1f} s")
         if self.obj_dlg is not None and self.obj_dlg.isVisible():
             self.obj_dlg.refresh()
         for ch in self.charts:
@@ -896,6 +917,56 @@ class Studio(QMainWindow):
             self.load_task(self.ds.path)
 
     # ------------------------------------------------------------------ objets (optionnel)
+    def _load_objects(self):
+        """Masques suivis de l'épisode (fenêtre Objets) et ligne d'état dans la section Épisode."""
+        self.obj_tracks = None
+        self.obj_lbl.setToolTip("")
+        od = self.ds.path / self.ep_name / "objects" if self.ds and self.ep_name else None
+        if od is None or not od.is_dir():
+            self.obj_lbl.setText("")
+            return
+        tracks = sorted(od.glob("*_tracks.npz"), key=lambda f: (f.name != "piece_tracks.npz", f.name))
+        sels = sorted(od.glob("*_selection.json"))
+        cands = sorted(od.glob("*_candidates_*.npz"))
+        if tracks:
+            name = tracks[0].name[: -len("_tracks.npz")]
+            try:
+                d = np.load(tracks[0])
+                self.obj_tracks = (d["masks"], int(d["shape"][-1]))
+            except Exception as e:
+                self.say(f"masques suivis illisibles : {e}", KO)
+            ch = []
+            sf = od / f"{name}_selection.json"
+            if sf.exists():
+                ch = json.loads(sf.read_text()).get("choices", [])
+            detail = ", ".join(f"image {c['frame']} : masque {c['source']} → {c['target']}" for c in ch)
+            self.obj_lbl.setText(f"<span style='color:{OK}'>◎ « {name} » suivi</span> "
+                                 f"<span style='color:{MUTED}'>· vert source, rouge cible</span>")
+            self.obj_lbl.setToolTip(f"choix : {detail}" if detail else "")
+        elif sels:
+            self.obj_lbl.setText(f"<span style='color:{WARN}'>◎ source / cible choisies, pas encore suivies</span> "
+                                 f"<span style='color:{MUTED}'>— Objets… → Suivre</span>")
+        elif cands:
+            self.obj_lbl.setText(f"<span style='color:{MUTED}'>◎ pièces détectées — choisir source / cible dans Objets…</span>")
+        else:
+            self.obj_lbl.setText("")
+
+    def _object_masks(self, fi: int):
+        if self.obj_tracks is None or not self.cb_objects.isChecked():
+            return None
+        packed, w = self.obj_tracks
+        if fi >= len(packed):
+            return None
+        m = np.unpackbits(packed[fi], axis=-1)[..., :w].astype(bool)
+        return [(m[0], (60, 200, 60)), (m[1], (230, 60, 60))]
+
+    def reload_objects(self):
+        """Appelé par la fenêtre Objets après un calcul : masques, ligne d'état, pastille ◎."""
+        if self.ep_name:
+            self._load_objects()
+            self._refresh_row(self.ep_name)
+            self.seek(self.frame)
+
     def _objects(self):
         if not self.ds:
             return

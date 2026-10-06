@@ -382,6 +382,7 @@ class ObjectsDialog(QDialog):
             self.choice["target"] = k
         self._save_choice(quiet=True)               # enregistré à chaque clic : rien à oublier
         self.refresh()
+        self.st.reload_objects()
 
     def _save_choice(self, quiet: bool = False):
         if self.cand is None or self.cand[2] != self.st.frame:
@@ -440,3 +441,4 @@ class ObjectsDialog(QDialog):
     def _done(self, code, _status):
         self.say("✔ terminé" if code == 0 else f"✘ échec (code {code})")
         self.on_episode()
+        self.st.reload_objects()                       # couleurs dans la caméra de tête du studio

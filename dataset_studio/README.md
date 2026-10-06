@@ -94,6 +94,8 @@ Bouton **Objets…** de l'en-tête. Fonction facultative : sans elle, rien ne ch
 4. **Choisir** : un clic sur un masque = **source** (vert), un clic sur un autre = **cible** (rouge), nouveau clic = retirer. Les autres masques sont écartés. Le choix est enregistré à chaque clic. Pour un second empilement dans le même épisode : aller plus loin dans la vidéo, détecter, choisir, enregistrer ; chaque choix vaut jusqu'au suivant.
 5. **Suivre** (cet épisode, ou tous ceux qui ont un choix) : seuls les deux masques choisis sont suivis, vers l'avant (comme en direct sur le robot). La fenêtre les affiche ensuite image par image.
 
+Une fois suivis, les masques apparaissent aussi **dans la caméra de tête du studio** (vert = source, rouge = cible ; case « objets suivis » sous la vidéo pour les masquer), la section **Épisode** dit l'état (détecté / choisi / suivi) et la liste porte la pastille ◎.
+
 Fichiers : `objects/objects.json` et `objects/<objet>_signature.npz` dans la tâche ; `episode_XXXX/objects/` (candidats, choix, masques suivis). Ligne de commande : `python -m dataset_studio.objects_worker --help`.
 
 ## Convertir au format WLA
