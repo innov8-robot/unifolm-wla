@@ -307,7 +307,7 @@ class Studio(QMainWindow):
         self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.table.itemSelectionChanged.connect(self._selection_changed)
         ll.addWidget(self.table, 1)
-        legend = QLabel("✓ réussi · ✗ raté · ? inconnu    ▦ découpé · ◎ objets · ⚠ à vérifier")
+        legend = QLabel("✓ réussi · ✗ raté · ? inconnu    ▦ découpé · ◎ objets suivis · ◌ à (re)suivre · ⚠ à vérifier")
         legend.setStyleSheet(f"color:{MUTED}; font-size:11px")
         ll.addWidget(legend)
         row = QHBoxLayout()
@@ -648,10 +648,17 @@ class Studio(QMainWindow):
     def _fill_row(self, r: int, s_):
         ep = self.ds.path / s_.name
         nseg = len(load_segments(ep))
-        has_obj = (ep / "objects").is_dir() and any((ep / "objects").glob("*_tracks.npz"))
+        obj_mark = ""
+        if (ep / "objects").is_dir():
+            if any((ep / "objects").glob("*_tracks.npz")):
+                from .objects_worker import tracking_state
+                st_ = tracking_state(self.ds.path, s_.name, next((ep / "objects").glob("*_tracks.npz")).name[: -len("_tracks.npz")])
+                obj_mark = "◌" if st_ == "modifié" else "◎"
+            elif any((ep / "objects").glob("*_selection.json")):
+                obj_mark = "◌"
         warn = bool(s_.error or s_.missing_images or "< 1 s" in s_.flags or "VIDE" in s_.flags)
         res = {"success": "✓", "failure": "✗", "unknown": "?"}.get(s_.outcome, "·")
-        state = " ".join(x for x in (f"▦ {nseg}" if nseg else "", "◎" if has_obj else "", "⚠" if warn else "") if x)
+        state = " ".join(x for x in (f"▦ {nseg}" if nseg else "", obj_mark, "⚠" if warn else "") if x)
         tip = (f"{s_.name} · {s_.n} pas · {s_.seconds:.1f} s · pinces G/D "
                f"{'●' if s_.left_gripper_used else '○'}/{'●' if s_.right_gripper_used else '○'}"
                + (f"\nindicateurs : {', '.join(s_.flags)}" if s_.flags else "")
@@ -928,7 +935,21 @@ class Studio(QMainWindow):
         tracks = sorted(od.glob("*_tracks.npz"), key=lambda f: (f.name != "piece_tracks.npz", f.name))
         sels = sorted(od.glob("*_selection.json"))
         cands = sorted(od.glob("*_candidates_*.npz"))
-        if tracks:
+        state = None
+        if tracks or sels:
+            from .objects_worker import tracking_state
+            nm = (tracks[0].name[: -len("_tracks.npz")] if tracks else sels[0].name[: -len("_selection.json")])
+            state = tracking_state(self.ds.path, self.ep_name, nm)
+        if tracks and state == "modifié":
+            name = tracks[0].name[: -len("_tracks.npz")]
+            try:
+                d = np.load(tracks[0])
+                self.obj_tracks = (d["masks"], int(d["shape"][-1]))
+            except Exception:
+                pass
+            self.obj_lbl.setText(f"<span style='color:{WARN}'>◌ « {name} » : choix modifié, à resuivre</span> "
+                                 f"<span style='color:{MUTED}'>— Objets… → Suivre tout (l'affichage montre l'ancien suivi)</span>")
+        elif tracks:
             name = tracks[0].name[: -len("_tracks.npz")]
             try:
                 d = np.load(tracks[0])

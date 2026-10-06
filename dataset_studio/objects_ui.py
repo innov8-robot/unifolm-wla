@@ -193,8 +193,10 @@ class ObjectsDialog(QDialog):
         right.addWidget(QLabel("5 · SUIVRE"))
         r5 = QHBoxLayout()
         b_tr = QPushButton("Suivre cet épisode")
+        b_tr.setToolTip("Suit les deux masques choisis sur cet épisode (refait même s'il est à jour)")
         b_tr.clicked.connect(self._track_here)
-        b_tr_all = QPushButton("Tous les épisodes choisis")
+        b_tr_all = QPushButton("Suivre tout (nouveaux / modifiés)")
+        b_tr_all.setToolTip("Suit les épisodes jamais suivis ou dont le choix a changé ; saute ceux déjà à jour")
         b_tr_all.clicked.connect(lambda: self._run(["track"]))
         r5.addWidget(b_tr)
         r5.addWidget(b_tr_all)
@@ -408,7 +410,7 @@ class ObjectsDialog(QDialog):
             self.say(f"{self.st.ep_name} : rien à suivre — « Détecter ici » sur une image où la main est loin, "
                      f"puis cliquez sur la pièce à prendre (vert) et sur la cible (rouge)")
             return
-        self._run(["track", "--episodes", self.st.ep_name])
+        self._run(["track", "--episodes", self.st.ep_name, "--force"])
 
     def _clear_choices(self):
         if self.st.ep_name and self.selection_path().exists():

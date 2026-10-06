@@ -223,6 +223,37 @@ def cmd_detect(a) -> None:
             f"(scores {np.round(sc[keep], 2).tolist() if keep else []})")
 
 
+def selection_signature(choices: list) -> str:
+    """Empreinte d'un choix (image, source, cible) : le suivi l'enregistre ; si le choix change, l'épisode
+    est « modifié » et « Suivre tout » le refait."""
+    return json.dumps(sorted([int(c["frame"]), c.get("source"), c.get("target")] for c in choices))
+
+
+def tracking_state(task: Path, episode: str, name: str) -> str:
+    """« aucun » (pas de choix), « à suivre » (choix sans suivi), « modifié » (choix changé depuis le suivi),
+    « à jour »."""
+    od = Path(task) / episode / "objects"
+    sf, tf = od / f"{name}_selection.json", od / f"{name}_tracks.npz"
+    if not sf.exists():
+        return "aucun"
+    try:
+        ch = json.loads(sf.read_text()).get("choices", [])
+    except Exception:
+        return "aucun"
+    if not ch:
+        return "aucun"
+    if not tf.exists():
+        return "à suivre"
+    try:
+        d = np.load(tf)
+        done = str(d["sel_sig"]) if "sel_sig" in d.files else None
+    except Exception:
+        return "à suivre"
+    if done is None:                       # suivi d'avant les empreintes : on compare les dates
+        return "à jour" if tf.stat().st_mtime >= sf.stat().st_mtime else "modifié"
+    return "à jour" if done == selection_signature(ch) else "modifié"
+
+
 def unpack(d) -> np.ndarray:
     shp = tuple(d["shape"])
     return np.unpackbits(d["masks"], axis=-1)[..., : shp[-1]].astype(bool).reshape(shp)
@@ -252,6 +283,10 @@ def cmd_track(a) -> None:
             say(f"[{n_ep + 1}/{len(eps)}] {ep} : liste de choix vide — épisode passé")
             continue
         sel = sorted(sel, key=lambda c: c["frame"])
+        state = tracking_state(task, ep, a.object)
+        if state == "à jour" and not a.force:
+            say(f"[{n_ep + 1}/{len(eps)}] {ep} : déjà suivi, choix inchangé — passé")
+            continue
         doc = json.loads((task / ep / "data.json").read_text())
         steps = doc["data"]
         H, W = read_rgb(task / ep / steps[0]["colors"][HEAD_CAM]).shape[:2]
@@ -277,8 +312,10 @@ def cmd_track(a) -> None:
                     pred.reset_state(vs)
             finally:
                 shutil.rmtree(tmp, ignore_errors=True)
-        np.savez_compressed(od / f"{a.object}_tracks.npz", masks=np.packbits(out, axis=-1), shape=np.array(out.shape))
-        say(f"[{n_ep + 1}/{len(eps)}] {ep} : {len(sel)} choix suivis (images {[c['frame'] for c in sel]})")
+        np.savez_compressed(od / f"{a.object}_tracks.npz", masks=np.packbits(out, axis=-1), shape=np.array(out.shape),
+                            sel_sig=np.array(selection_signature(sel)))
+        say(f"[{n_ep + 1}/{len(eps)}] {ep} : {'resuivi (choix modifié)' if state == 'modifié' else 'suivi'} "
+            f"— {len(sel)} choix (images {[c['frame'] for c in sel]})")
 
 
 def load_tracks(task: Path, episode: str, name: str) -> np.ndarray:
@@ -323,6 +360,7 @@ def main() -> None:
     t.add_argument("--task", required=True)
     t.add_argument("--object", default="piece")
     t.add_argument("--episodes", nargs="*")
+    t.add_argument("--force", action="store_true", help="refaire aussi les épisodes déjà à jour")
     p = sub.add_parser("preview")
     p.add_argument("--task", required=True)
     p.add_argument("--object", default="piece")
