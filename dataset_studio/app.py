@@ -161,6 +161,7 @@ class Studio(QMainWindow):
         self.timer.timeout.connect(self._tick)
         self.speed = 1.0
         self.proc = None
+        self.obj_dlg = None
         self._build()
         self._shortcuts()
         self.open_root(start)
@@ -191,6 +192,9 @@ class Studio(QMainWindow):
         h.addWidget(self.path_lbl, 1)
         b_open = button("Ouvrir…")
         b_open.clicked.connect(self._choose_dir)
+        b_obj = button("Objets…", "Quiet", "Encadrer un objet, détecter ses instances, choisir source / cible, suivre (optionnel)")
+        b_obj.clicked.connect(self._objects)
+        h.addWidget(b_obj)
         b_reload = button("Recharger", "Quiet")
         b_reload.clicked.connect(lambda: self.load_task(self.ds.path) if self.ds else None)
         h.addWidget(b_reload)
@@ -548,6 +552,8 @@ class Studio(QMainWindow):
         self.slider.blockSignals(False)
         self._update_marks()
         self._refresh_segments()
+        if self.obj_dlg is not None and self.obj_dlg.isVisible():
+            self.obj_dlg.on_episode()
         self.seek(0)
 
     def _chart_group(self, chart: SignalChart, group: str):
@@ -578,6 +584,8 @@ class Studio(QMainWindow):
         self.slider.setValue(self.frame)
         self.slider.blockSignals(False)
         self.frame_lbl.setText(f"pas {self.frame:4d}/{n - 1}   {self.frame / FPS:6.2f} s")
+        if self.obj_dlg is not None and self.obj_dlg.isVisible():
+            self.obj_dlg.refresh()
         for ch in self.charts:
             ch.set_cursor(self.frame)
 
@@ -695,6 +703,24 @@ class Studio(QMainWindow):
         d.exec()
         if d.changed:
             self.load_task(self.ds.path)
+
+    # ------------------------------------------------------------------ objets (optionnel)
+    def _objects(self):
+        if not self.ds:
+            return
+        try:
+            from .objects_ui import ObjectsDialog, worker_available
+        except Exception as e:                       # cv2 absent, etc. : le reste du studio n'est pas touché
+            self.say(f"fenêtre Objets indisponible : {e}", KO)
+            return
+        ok, msg = worker_available()
+        if not ok:
+            self.say(f"Objets : {msg}", WARN)
+        if self.obj_dlg is None:
+            self.obj_dlg = ObjectsDialog(self)
+        self.obj_dlg.show()
+        self.obj_dlg.raise_()
+        self.obj_dlg.on_episode()
 
     # ------------------------------------------------------------------ étiquettes et segments
     def _tag_color(self, name: str) -> str:
