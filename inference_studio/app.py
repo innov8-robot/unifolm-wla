@@ -27,7 +27,7 @@ from pathlib import Path
 
 import zmq
 from PySide6.QtCore import QProcess, QProcessEnvironment, Qt, QTimer
-from PySide6.QtGui import QColor, QKeySequence, QShortcut
+from PySide6.QtGui import QColor, QImage, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFrame, QGridLayout,
                                QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
                                QMessageBox, QPlainTextEdit, QPushButton, QSplitter, QTabWidget, QVBoxLayout,
@@ -43,6 +43,8 @@ SETTINGS = Path.home() / ".config" / "g1d_inference_studio.json"
 PORT = 8600
 IPC_DATA = "ipc://@xr_teleoperate_data.ipc"
 IPC_HB = "ipc://@xr_teleoperate_hb.ipc"
+VP_PORT = 8610
+VP_PY = os.environ.get("STUDIO_OBJECTS_PY", str(Path.home() / "miniconda3/envs/unitree_lerobot/bin/python"))
 DEFAULTS = {"network_interface": "enx0c3796e0bc5b", "img_server_ip": "192.168.123.164", "torso_pitch": 0.166,
             "torso_yaw": True, "base": True, "column": True, "record": True, "max_speed": 1.0}
 
@@ -110,6 +112,10 @@ class Studio(QMainWindow):
         self.server = None
         self.server_ready = False
         self.teleop = None
+        self.tracker = None
+        self.vp = {}                     # dernier statut du service de visual prompt
+        self.vp_pick = []                # numéros choisis (source puis cible)
+        self.vp_t = 0.0
         self.hb = {}
         self.hb_t = 0.0
         self.ctx = zmq.Context.instance()
@@ -141,7 +147,7 @@ class Studio(QMainWindow):
         h.addSpacing(20)
         self.pills = {}
         for key, txt in (("server", "Serveur"), ("teleop", "Téléop"), ("robot", "Robot"), ("trial", "Essai"),
-                         ("zero_g", "Gravité zéro"), ("cams", "Caméras"), ("score", "Session")):
+                         ("zero_g", "Gravité zéro"), ("cams", "Caméras"), ("vp", "Visual prompt"), ("score", "Session")):
             l = QLabel(f"{txt} —")
             l.setStyleSheet(f"color:{MUTED}; padding:3px 10px; border:1px solid #263041; border-radius:10px")
             self.pills[key] = l
@@ -188,6 +194,17 @@ class Studio(QMainWindow):
         orow.addWidget(self.cb_col, 2, 0)
         orow.addWidget(self.speed, 2, 1)
         ll.addLayout(orow)
+        vrow = QHBoxLayout()
+        self.cb_vp = QCheckBox("Visual prompt")
+        self.cb_vp.setToolTip("Le modèle voit la pièce à prendre en VERT et la destination en ROUGE (suivi en direct)")
+        self.sig_combo = QComboBox()
+        self.sig_combo.setToolTip("Projet dont la signature sert à reconnaître les pièces")
+        for t in sorted(RAW.glob("*/objects/piece_signature.npz")):
+            self.sig_combo.addItem(t.parent.parent.name, str(t))
+        vrow.addWidget(self.cb_vp)
+        vrow.addWidget(QLabel("signature :"))
+        vrow.addWidget(self.sig_combo, 1)
+        ll.addLayout(vrow)
         self.b_server = big("Démarrer le serveur", "Run", "Charge le modèle sur le GPU (≈ 1 min)")
         self.b_server.clicked.connect(self._toggle_server)
         self.b_teleop = big("Lancer la téléop", None, "Téléop en mode politique, pilotée par cette application")
@@ -203,6 +220,28 @@ class Studio(QMainWindow):
         self.big_state.setAlignment(Qt.AlignCenter)
         self.big_state.setStyleSheet("font-size:20px; font-weight:600; padding:18px; background:#0a0d12; border-radius:6px")
         cl.addWidget(self.big_state)
+        self.vp_box = QFrame()
+        vb = QVBoxLayout(self.vp_box)
+        vb.setContentsMargins(0, 0, 0, 0)
+        self.vp_view = QLabel("caméra de tête")
+        self.vp_view.setAlignment(Qt.AlignCenter)
+        self.vp_view.setMinimumHeight(300)
+        self.vp_view.setStyleSheet("background:#07090c; border:1px solid #1c2430; color:#8b949e")
+        vb.addWidget(self.vp_view, 1)
+        vr = QHBoxLayout()
+        self.b_detect = big("🔍  Détecter les pièces  [D]", None, "Bras LOIN des pièces (garde) : repère les pièces, puis 1-9 = source, puis cible")
+        self.b_detect.clicked.connect(self._vp_detect)
+        self.b_vp_reset = big("Recommencer  [0]", None, "Efface la source et la cible")
+        self.b_vp_reset.clicked.connect(self._vp_reset)
+        vr.addWidget(self.b_detect, 2)
+        vr.addWidget(self.b_vp_reset, 1)
+        vb.addLayout(vr)
+        self.vp_lbl = QLabel("")
+        self.vp_lbl.setStyleSheet("font-size:14px")
+        vb.addWidget(self.vp_lbl)
+        cl.addWidget(self.vp_box)
+        self.vp_box.setVisible(False)
+        self.cb_vp.toggled.connect(self.vp_box.setVisible)
         g = QGridLayout()
         g.setSpacing(10)
         self.b_enable = big("⏻  Activer le robot  [Entrée]", "Run", "Équivaut à « r » : les bras se mettent sous contrôle")
@@ -260,6 +299,10 @@ class Studio(QMainWindow):
                          (Qt.Key_G, "CMD_GUARD"), (Qt.Key_Q, "CMD_STOP")):
             s = QShortcut(QKeySequence(key), self)
             s.activated.connect(lambda c=cmd: self._cmd(c))
+        QShortcut(QKeySequence(Qt.Key_D), self).activated.connect(self._vp_detect)
+        QShortcut(QKeySequence(Qt.Key_0), self).activated.connect(self._vp_reset)
+        for k in range(1, 10):
+            QShortcut(QKeySequence(str(k)), self).activated.connect(lambda k=k: self._vp_pick(k - 1))
 
     def say(self, msg: str, color: str | None = None):
         self.status.setText(msg)
@@ -294,6 +337,7 @@ class Studio(QMainWindow):
         if saved:
             self.instr.setCurrentText(saved)
         self.task_name.setText(f"{run.name.removeprefix('g1d_')}_policy")
+        self.cb_vp.setChecked("_vp" in run.name.lower())
         self.say(f"{run.name} : {len(tasks)} consigne(s) d'entraînement trouvée(s)" if tasks else
                  f"{run.name} : consignes d'entraînement introuvables, tapez la consigne", None if tasks else WARN)
 
@@ -320,7 +364,10 @@ class Studio(QMainWindow):
             self.server.terminate()
             if not self.server.waitForFinished(5000):
                 self.server.kill()
+            self._stop_tracker()
             return
+        if self.cb_vp.isChecked():
+            self._start_tracker()
         run = self._run_dir()
         if run is None:
             return
@@ -388,6 +435,8 @@ class Studio(QMainWindow):
             args.append("--base")
         if self.cb_col.isChecked():
             args.append("--column")
+        if self.cb_vp.isChecked():
+            args += ["--vp-tracker", f"tcp://127.0.0.1:{VP_PORT}"]
         if self.cb_record.isChecked():
             args += ["--record", f"--task-name={self.task_name.text().strip() or 'policy'}", f"--task-goal={instr}"]
         self.teleop = QProcess(self)
@@ -422,6 +471,102 @@ class Studio(QMainWindow):
         else:
             self.hb = {}
 
+    # ------------------------------------------------------------------ visual prompt
+    def _start_tracker(self):
+        if self.tracker and self.tracker.state() != QProcess.NotRunning:
+            return
+        sig = self.sig_combo.currentData()
+        if not sig or not Path(VP_PY).exists():
+            self.say("visual prompt : signature ou environnement unitree_lerobot introuvable", KO)
+            return
+        self.tracker = QProcess(self)
+        self.tracker.setWorkingDirectory(str(REPO))
+        self.tracker.setProcessChannelMode(QProcess.MergedChannels)
+        self.tracker.readyReadStandardOutput.connect(lambda: [
+            self.log_server.appendPlainText("[suivi] " + l) for l in
+            bytes(self.tracker.readAllStandardOutput()).decode(errors="replace").splitlines()
+            if l.strip() and "warn" not in l.lower()])
+        self.log_server.appendPlainText(f"▶ suivi visual prompt (signature {self.sig_combo.currentText()})")
+        self.tracker.start(VP_PY, ["-m", "inference_studio.vp_tracker", "--signature", sig, "--port", str(VP_PORT)])
+
+    def _stop_tracker(self):
+        if self.tracker and self.tracker.state() != QProcess.NotRunning:
+            self.tracker.terminate()
+            if not self.tracker.waitForFinished(3000):
+                self.tracker.kill()
+
+    def _vp_req(self, msg: dict, timeout: int = 200):
+        s = self.ctx.socket(zmq.REQ)
+        s.setsockopt(zmq.LINGER, 0)
+        s.setsockopt(zmq.RCVTIMEO, timeout)
+        s.setsockopt(zmq.SNDTIMEO, timeout)
+        try:
+            s.connect(f"tcp://127.0.0.1:{VP_PORT}")
+            s.send_json(msg)
+            meta, jpg = s.recv_multipart()
+            return json.loads(meta), jpg
+        except zmq.Again:
+            return None, b""
+        finally:
+            s.close()
+
+    def _vp_detect(self):
+        if not self.cb_vp.isChecked():
+            return
+        if self.hb.get("RECORD_RUNNING"):
+            self.say("pas pendant un essai", WARN)
+            return
+        self.say("détection des pièces…")
+        QApplication.processEvents()
+        res, _ = self._vp_req({"cmd": "detect"}, timeout=20000)
+        self.vp_pick = []
+        if not res or not res.get("ok"):
+            self.say(f"détection impossible : {(res or {}).get('error', 'service de suivi muet (en démarrage ?)')}", KO)
+            return
+        self.say(f"{res['candidates']} pièce(s) — tapez le numéro de la pièce à PRENDRE, puis celui de la DESTINATION", OK)
+
+    def _vp_pick(self, k: int):
+        if not self.cb_vp.isChecked() or not self.vp.get("candidates"):
+            return
+        if k >= self.vp["candidates"] or k in self.vp_pick:
+            return
+        self.vp_pick.append(k)
+        if len(self.vp_pick) == 2:
+            res, _ = self._vp_req({"cmd": "select", "source": self.vp_pick[0], "target": self.vp_pick[1]}, 2000)
+            ok = bool(res and res.get("ok"))
+            self.say(f"suivi : pièce {self.vp_pick[0] + 1} (verte) sur la pièce {self.vp_pick[1] + 1} (rouge)" if ok
+                     else f"choix refusé : {(res or {}).get('error')}", OK if ok else KO)
+            if not ok:
+                self.vp_pick = []
+        else:
+            self.say(f"source : pièce {k + 1} — tapez maintenant la destination")
+
+    def _vp_reset(self):
+        self.vp_pick = []
+        self._vp_req({"cmd": "reset"})
+        self.say("source et cible effacées : D pour détecter de nouveau")
+
+    def _vp_poll(self):
+        if not self.cb_vp.isChecked() or not self.tracker or self.tracker.state() == QProcess.NotRunning:
+            self.vp = {}
+            return
+        if time.time() - self.vp_t < 0.15:
+            return
+        self.vp_t = time.time()
+        res, jpg = self._vp_req({"cmd": "view"}, 150)
+        if res is None:
+            self.vp = {"starting": True}
+            return
+        self.vp = res
+        if jpg:
+            qi = QImage.fromData(jpg, "JPG")
+            pm = QPixmap.fromImage(qi).scaled(self.vp_view.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.vp_view.setPixmap(pm)
+        src = f"{self.vp_pick[0] + 1}" if self.vp_pick else "—"
+        tgt = f"{self.vp_pick[1] + 1}" if len(self.vp_pick) > 1 else "—"
+        self.vp_lbl.setText(f"pièces détectées : {res.get('candidates', 0)} · source (verte) {src} · cible (rouge) {tgt} · "
+                            f"suivi {'✓' if res.get('tracking') else '—'} · {res.get('fps', 0)} img/s")
+
     # ------------------------------------------------------------------ IPC
     def _cmd(self, cmd: str):
         if not self.teleop or self.teleop.state() == QProcess.NotRunning:
@@ -452,6 +597,7 @@ class Studio(QMainWindow):
                 self.hb_t = time.time()
         except zmq.Again:
             pass
+        self._vp_poll()
         teleop_on = bool(self.teleop and self.teleop.state() != QProcess.NotRunning)
         alive = teleop_on and time.time() - self.hb_t < 2.0
         hb = self.hb if alive else {}
@@ -472,6 +618,14 @@ class Studio(QMainWindow):
                    else "Caméras OK" if alive else "Caméras —")
         self._pill("cams", cam_txt, KO if miss or blurry else OK if alive else MUTED)
         self._pill("score", f"✓ {hb.get('N_OK', 0)} · ✗ {hb.get('N_KO', 0)}", MUTED)
+        if self.cb_vp.isChecked():
+            v = self.vp
+            vtxt, vcol = (("VP : suivi ✓", OK) if v.get("ready") else ("VP : choisir source / cible", WARN) if v.get("camera")
+                          else ("VP : démarrage…", WARN) if self.tracker and self.tracker.state() != QProcess.NotRunning
+                          else ("VP : arrêté", MUTED))
+            self._pill("vp", vtxt, vcol)
+        else:
+            self._pill("vp", "VP —", MUTED)
         # gros état + boutons utiles
         if not teleop_on:
             msg = ("Serveur prêt : lancez la téléop." if self.server_ready else
@@ -480,6 +634,8 @@ class Studio(QMainWindow):
             msg = "Démarrage de la téléop…"
         elif not hb.get("START"):
             msg = "Téléop prête : activez le robot (Entrée)."
+        elif trial and self.cb_vp.isChecked() and not self.vp.get("ready"):
+            msg = "ESSAI EN COURS mais visual prompt PAS PRÊT : le robot attend (détectez et choisissez source / cible)"
         elif trial:
             msg = f"ESSAI EN COURS — {hb.get('EPISODE_STEPS', 0)} pas\nRéussi (R) · Raté (E) · Annuler (Échap)"
         elif hb.get("ZERO_G"):
@@ -520,6 +676,7 @@ class Studio(QMainWindow):
         if self.server and self.server.state() != QProcess.NotRunning:
             self.server.terminate()
             self.server.waitForFinished(5000)
+        self._stop_tracker()
         self._save_settings()
         e.accept()
 

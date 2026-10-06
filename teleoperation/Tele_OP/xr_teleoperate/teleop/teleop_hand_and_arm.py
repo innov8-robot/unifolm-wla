@@ -154,6 +154,9 @@ if __name__ == '__main__':
     parser.add_argument('--policy-instruction', type=str, default=None, help='instruction envoyée au modèle (défaut : --task-goal)')
     parser.add_argument('--policy-advantage', type=str, default=None, help='condition RECAP envoyée au modèle, ex. positive')
     parser.add_argument('--policy-exec-steps', type=int, default=30, help='pas exécutés par chunk avant replanification')
+    parser.add_argument('--vp-tracker', type=str, default=None,
+                        help='visual prompt : service de suivi (inference_studio/vp_tracker.py), ex. tcp://127.0.0.1:8610 ; '
+                             'l\'image de tête envoyée au modèle porte alors la source (vert) et la cible (rouge)')
     parser.add_argument('--policy-max-speed', type=float, default=0.10, help='vitesse max des cibles (m/s) ; commencer bas')
     parser.add_argument('--torso-pitch-index', type=int, default=13, help='indice du tangage du buste dans les 35 moteurs (HYPOTHÈSE)')
     parser.add_argument('--torso-pitch', type=float, default=None, help='tangage du buste constant (rad), remplace --torso-pitch-index')
@@ -258,6 +261,11 @@ if __name__ == '__main__':
         # mode politique (G1-D, RECAP) : connexion au serveur WLA AVANT le mode debug et l'init des bras :
         # un serveur injoignable arrête le programme sans jamais toucher au robot (audits du 29/09 et du 1/10)
         bridge = None
+        vp_client = None
+        if args.vp_tracker:
+            from teleop.utils.vp_client import VPClient
+            vp_client = VPClient(args.vp_tracker)
+            logger_mp.info(f"🎯  visual prompt : image de tête coloriée par {args.vp_tracker}")
         if args.policy_uri:
             if not camera_config['head_camera']['enable_zmq']:
                 raise SystemExit("mode politique : la caméra de tête doit être servie en ZMQ (enable_zmq: true)")
@@ -681,10 +689,19 @@ if __name__ == '__main__':
                            and right_wrist_img.bgr is not None
                            and (args.right_only or (left_wrist_img is not None and left_wrist_img.bgr is not None)))
                 res = None
+                if policy_active and imgs_ok and vp_client is not None:
+                    head_vp = vp_client.prompted_head()
+                    if head_vp is None:
+                        imgs_ok = False
+                        if time.time() - last_noimg_log > 2.0:
+                            last_noimg_log = time.time()
+                            logger_mp.warning(f"🎯  visual prompt pas prêt ({vp_client.last_status.get('error') or 'source / cible non suivies'}) : politique en tenue")
                 if policy_active and imgs_ok:
                     head = head_img.bgr
                     if camera_config['head_camera']['binocular']:
                         head = head[:, :head.shape[1] // 2]            # œil GAUCHE (brut), comme les datasets
+                    if vp_client is not None:                          # visual prompt : image coloriée
+                        head = head_vp
                     # --right-only : pas de caméra de poignet gauche -> image noire (jamais celle de droite)
                     lw = np.zeros_like(right_wrist_img.bgr) if args.right_only else left_wrist_img.bgr
                     with dual_gripper_data_lock:
