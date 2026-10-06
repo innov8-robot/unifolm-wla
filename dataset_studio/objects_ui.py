@@ -28,7 +28,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 from PySide6.QtCore import QPoint, QProcess, QProcessEnvironment, QRect, Qt, Signal
-from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
+from PySide6.QtGui import QColor, QImage, QKeySequence, QPainter, QPen, QPixmap, QShortcut
 from PySide6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
                                QPlainTextEdit, QPushButton, QVBoxLayout, QWidget)
 
@@ -132,14 +132,25 @@ class ObjectsDialog(QDialog):
     def _build(self):
         root = QHBoxLayout(self)
         left = QVBoxLayout()
+        self.quick = QLabel("CHOIX RAPIDE  ·  ↓ / ↑ épisode suivant / précédent  ·  1 à 9 = source puis cible  ·  "
+                            "0 = effacer  ·  enregistré à chaque touche")
+        self.quick.setStyleSheet("background:#12332d; color:#35e0c8; font-weight:600; padding:6px 10px; border-radius:4px")
+        left.addWidget(self.quick)
         self.view = BoxView()
         self.view.box_drawn.connect(self._on_box)
         self.view.clicked.connect(self._on_click)
         left.addWidget(self.view, 1)
         self.status = QLabel("")
         self.status.setWordWrap(True)
+        self.status.setStyleSheet("font-size:14px; padding:4px 2px")
         left.addWidget(self.status)
         root.addLayout(left, 3)
+
+        def h2(t):
+            l = QLabel(t)
+            l.setObjectName("H2")
+            l.setStyleSheet("font-size:12px; letter-spacing:1px; font-weight:700; color:#cdd6e0; padding-top:8px")
+            return l
 
         right = QVBoxLayout()
         row = QHBoxLayout()
@@ -148,7 +159,10 @@ class ObjectsDialog(QDialog):
         self.name.editingFinished.connect(self.refresh)
         row.addWidget(self.name, 1)
         right.addLayout(row)
-        right.addWidget(QLabel("1 · ENCADRER (glisser sur l'image)"))
+        self.sig_lbl = QLabel("")
+        self.sig_lbl.setWordWrap(True)
+        right.addWidget(self.sig_lbl)
+        right.addWidget(h2("1 · ENCADRER L'OBJET (glisser sur l'image)"))
         r1 = QHBoxLayout()
         b_add = QPushButton("Ajouter l'encadré")
         b_add.clicked.connect(self._add_example)
@@ -158,18 +172,18 @@ class ObjectsDialog(QDialog):
         r1.addWidget(b_rand)
         right.addLayout(r1)
         self.ex_list = QListWidget()
-        self.ex_list.setMaximumHeight(130)
+        self.ex_list.setMaximumHeight(110)
         self.ex_list.itemDoubleClicked.connect(self._goto_example)
         right.addWidget(self.ex_list)
         r2 = QHBoxLayout()
         b_del = QPushButton("Retirer l'exemple")
         b_del.clicked.connect(self._del_example)
-        b_sig = QPushButton("2 · Construire la signature")
+        b_sig = QPushButton("Construire la signature")
         b_sig.clicked.connect(lambda: self._run(["signature"]))
         r2.addWidget(b_del)
         r2.addWidget(b_sig)
         right.addLayout(r2)
-        right.addWidget(QLabel("3 · DÉTECTER (image où la main est loin)"))
+        right.addWidget(h2("2 · DÉTECTER LES PIÈCES (main loin des pièces)"))
         r3 = QHBoxLayout()
         b_det = QPushButton("Détecter ici")
         b_det.clicked.connect(self._detect_here)
@@ -178,19 +192,19 @@ class ObjectsDialog(QDialog):
         r3.addWidget(b_det)
         r3.addWidget(b_det_all)
         right.addLayout(r3)
-        right.addWidget(QLabel("4 · CHOISIR : clic = source (vert), autre clic = cible (rouge) — enregistré tout seul"))
+        right.addWidget(h2("3 · CHOISIR : 1er = source (vert), 2e = cible (rouge)"))
         r4 = QHBoxLayout()
-        b_save = QPushButton("Enregistrer le choix")
-        b_save.clicked.connect(self._save_choice)
-        b_clear = QPushButton("Effacer les choix de l'épisode")
-        b_clear.clicked.connect(self._clear_choices)
-        r4.addWidget(b_save)
+        b_clear = QPushButton("Effacer le choix  [0]")
+        b_clear.clicked.connect(lambda: self._choose(None))
+        b_clear_all = QPushButton("Effacer tous les choix de l'épisode")
+        b_clear_all.clicked.connect(self._clear_choices)
         r4.addWidget(b_clear)
+        r4.addWidget(b_clear_all)
         right.addLayout(r4)
         self.choice_lbl = QLabel("")
         self.choice_lbl.setWordWrap(True)
         right.addWidget(self.choice_lbl)
-        right.addWidget(QLabel("5 · SUIVRE"))
+        right.addWidget(h2("4 · SUIVRE"))
         r5 = QHBoxLayout()
         b_tr = QPushButton("Suivre cet épisode")
         b_tr.setToolTip("Suit les deux masques choisis sur cet épisode (refait même s'il est à jour)")
@@ -207,6 +221,19 @@ class ObjectsDialog(QDialog):
         w = QWidget()
         w.setLayout(right)
         root.addWidget(w, 2)
+        # clavier du choix rapide (dans CETTE fenêtre)
+        def sc(key, fn):
+            q = QShortcut(QKeySequence(key), self)
+            q.activated.connect(fn)
+        sc(Qt.Key_Down, lambda: self._step(+1))
+        sc(Qt.Key_Up, lambda: self._step(-1))
+        sc(Qt.Key_PageDown, lambda: self._step(+1))
+        sc(Qt.Key_PageUp, lambda: self._step(-1))
+        sc(Qt.Key_Right, lambda: self.st.seek(self.st.frame + 1))
+        sc(Qt.Key_Left, lambda: self.st.seek(self.st.frame - 1))
+        sc(Qt.Key_0, lambda: self._choose(None))
+        for k in range(1, 10):
+            sc(str(k), lambda k=k: self._choose(k - 1))
 
     # ------------------------------------------------------------------ fichiers
     def obj(self) -> str:
@@ -258,6 +285,13 @@ class ObjectsDialog(QDialog):
                     self.tracks = unpack(np.load(f))
                 except Exception as e:
                     self.say(f"suivi illisible : {e}")
+            # se placer sur l'image où les pièces ont été détectées (choix rapide)
+            if not self._candidates_file(self.st.frame).exists():
+                fs = sorted((self.ep_dir() / "objects").glob(f"{self.obj()}_candidates_*.npz")) \
+                    if (self.ep_dir() / "objects").is_dir() else []
+                if fs:
+                    self.st.seek(int(fs[0].stem.rsplit("_", 1)[1]))
+                    return                                 # seek() rappelle refresh()
         self.refresh()
 
     def _candidates_file(self, frame: int) -> Path:
@@ -286,8 +320,10 @@ class ObjectsDialog(QDialog):
                 ov[masks[k]] = RGB[role]
                 ys, xs = np.nonzero(masks[k])
                 if len(xs):
-                    cv2.putText(rgb, f"{k}", (int(xs.mean()) - 5, int(ys.min()) - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
-            txt.append(f"{len(masks)} candidat(s) sur cette image — cliquez pour choisir")
+                    org = (int(xs.mean()) - 8, max(18, int(ys.min()) - 6))
+                    cv2.putText(rgb, f"{k + 1}", org, cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 5)
+                    cv2.putText(rgb, f"{k + 1}", org, cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+            txt.append(f"{len(masks)} pièce(s) détectée(s) — touche ou clic : 1er = source, 2e = cible")
         elif self.tracks is not None and fr < len(self.tracks):
             ov[self.tracks[fr, 0]] = RGB["source"]
             ov[self.tracks[fr, 1]] = RGB["cible"]
@@ -311,9 +347,11 @@ class ObjectsDialog(QDialog):
             it.setData(Qt.UserRole, e)
             self.ex_list.addItem(it)
         sel = json.loads(self.selection_path().read_text())["choices"] if self.st.ep_name and self.selection_path().exists() else []
-        cur = f"source {self.choice['source']} · cible {self.choice['target']}"
+        f1 = lambda v: "—" if v is None else str(v + 1)
+        cur = f"source {f1(self.choice['source'])} · cible {f1(self.choice['target'])}"
         self.choice_lbl.setText(f"choix courant : {cur}\nenregistrés : " +
-                                (", ".join(f"image {c['frame']} ({c['source']}→{c['target']})" for c in sel) or "aucun"))
+                                (", ".join(f"image {c['frame']} ({f1(c['source'])}→{f1(c['target'])})" for c in sel) or "aucun"))
+        self._refresh_signature()
 
     def _saved_choice(self, frame: int) -> dict:
         if self.selection_path().exists():
@@ -373,8 +411,18 @@ class ObjectsDialog(QDialog):
         hit = [k for k in range(len(masks)) if 0 <= y < masks.shape[1] and 0 <= x < masks.shape[2] and masks[k][y, x]]
         if not hit:
             return
-        k = hit[0]
-        if self.choice["source"] == k:
+        self._choose(hit[0])
+
+    def _choose(self, k):
+        """Touche 1-9 / clic : 1er = source, 2e = cible ; même pièce = la retirer ; None (touche 0) = tout effacer."""
+        if self.cand is None or self.cand[2] != self.st.frame:
+            self.say("pas de pièces détectées sur cette image (« Détecter ici » ou « Tous les épisodes »)")
+            return
+        if k is not None and k >= len(self.cand[0]):
+            return
+        if k is None:
+            self.choice = {"source": None, "target": None}
+        elif self.choice["source"] == k:
             self.choice["source"] = None
         elif self.choice["target"] == k:
             self.choice["target"] = None
@@ -385,6 +433,25 @@ class ObjectsDialog(QDialog):
         self._save_choice(quiet=True)               # enregistré à chaque clic : rien à oublier
         self.refresh()
         self.st.reload_objects()
+
+    def _step(self, d: int):
+        self.st._step_episode(d)                       # le choix courant est déjà enregistré
+
+    def _refresh_signature(self):
+        f = self.st.ds.path / "objects" / f"{self.obj()}_signature.npz" if self.st.ds else None
+        if f is None or not f.exists():
+            self.sig_lbl.setText("<span style='color:#e3b341'>Signature : absente</span> — encadrez l'objet "
+                                 "(au moins 3 fois), puis « Construire la signature »")
+            return
+        try:
+            d = np.load(f)
+            n, loo = len(d["pos"]), d["loo"] if "loo" in d.files else None
+        except Exception:
+            n, loo = "?", None
+        ex = len(self.examples())
+        src = "" if ex else " · copiée d'un autre projet (exemples absents ici)"
+        val = f" · validation min {float(np.min(loo)):+.2f}" if loo is not None and len(loo) else ""
+        self.sig_lbl.setText(f"<span style='color:#3fd67f'>Signature : ✓</span> {n} exemples{val}{src}")
 
     def _save_choice(self, quiet: bool = False):
         if self.cand is None or self.cand[2] != self.st.frame:

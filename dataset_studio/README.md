@@ -92,7 +92,8 @@ Bouton **Objets…** de l'en-tête. Fonction facultative : sans elle, rien ne ch
 2. **Construire la signature** : le journal donne la validation (chaque exemple retiré à tour de rôle doit rester au-dessus de 0, les fonds en dessous).
 3. **Détecter** : sur une image où la main est loin des pièces, **Détecter ici** (ou **Tous les épisodes**, à l'image 0). SAM2 découpe tout, la signature garde ce qui ressemble à l'objet : 6 pièces identiques donnent 6 masques numérotés. Aucun texte.
 4. **Choisir** : un clic sur un masque = **source** (vert), un clic sur un autre = **cible** (rouge), nouveau clic = retirer. Les autres masques sont écartés. Le choix est enregistré à chaque clic. Pour un second empilement dans le même épisode : aller plus loin dans la vidéo, détecter, choisir, enregistrer ; chaque choix vaut jusqu'au suivant.
-5. **Suivre** (cet épisode, ou tous ceux qui ont un choix) : seuls les deux masques choisis sont suivis, vers l'avant (comme en direct sur le robot). La fenêtre les affiche ensuite image par image.
+   **Choix rapide au clavier**, dans la fenêtre Objets : **↓ / ↑** épisode suivant / précédent (la fenêtre se place sur l'image où les pièces ont été détectées), **1 à 9** = le numéro affiché sur la pièce (1er appui = source, 2e = cible), **0** = effacer. Enregistré à chaque touche : on enchaîne ↓, 1, 2, ↓, 1, 2…
+5. **Suivre** : « Suivre tout » ne traite que les épisodes nouveaux ou dont le choix a changé (les autres sont sautés) ; « Suivre cet épisode » refait l'épisode courant. Seuls les deux masques choisis sont suivis, vers l'avant (comme en direct sur le robot).
 
 Une fois suivis, les masques apparaissent aussi **dans la caméra de tête du studio** (vert = source, rouge = cible ; case « objets suivis » sous la vidéo pour les masquer), la section **Épisode** dit l'état (détecté / choisi / suivi) et la liste porte la pastille ◎.
 
