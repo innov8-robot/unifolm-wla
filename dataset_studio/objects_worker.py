@@ -242,7 +242,15 @@ def cmd_track(a) -> None:
                                if (p / "objects" / f"{a.object}_selection.json").exists())
     for n_ep, ep in enumerate(eps):
         od = task / ep / "objects"
-        sel = json.loads((od / f"{a.object}_selection.json").read_text())["choices"]
+        sf = od / f"{a.object}_selection.json"
+        if not sf.exists():
+            say(f"[{n_ep + 1}/{len(eps)}] {ep} : aucun choix source / cible enregistré — épisode passé "
+                f"(détecter, puis cliquer sur les masques)")
+            continue
+        sel = json.loads(sf.read_text())["choices"]
+        if not sel:
+            say(f"[{n_ep + 1}/{len(eps)}] {ep} : liste de choix vide — épisode passé")
+            continue
         sel = sorted(sel, key=lambda c: c["frame"])
         doc = json.loads((task / ep / "data.json").read_text())
         steps = doc["data"]

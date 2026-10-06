@@ -178,7 +178,7 @@ class ObjectsDialog(QDialog):
         r3.addWidget(b_det)
         r3.addWidget(b_det_all)
         right.addLayout(r3)
-        right.addWidget(QLabel("4 · CHOISIR : clic = source (vert), autre clic = cible (rouge)"))
+        right.addWidget(QLabel("4 · CHOISIR : clic = source (vert), autre clic = cible (rouge) — enregistré tout seul"))
         r4 = QHBoxLayout()
         b_save = QPushButton("Enregistrer le choix")
         b_save.clicked.connect(self._save_choice)
@@ -193,7 +193,7 @@ class ObjectsDialog(QDialog):
         right.addWidget(QLabel("5 · SUIVRE"))
         r5 = QHBoxLayout()
         b_tr = QPushButton("Suivre cet épisode")
-        b_tr.clicked.connect(lambda: self._run(["track", "--episodes", self.st.ep_name]) if self.st.ep_name else None)
+        b_tr.clicked.connect(self._track_here)
         b_tr_all = QPushButton("Tous les épisodes choisis")
         b_tr_all.clicked.connect(lambda: self._run(["track"]))
         r5.addWidget(b_tr)
@@ -380,20 +380,34 @@ class ObjectsDialog(QDialog):
             self.choice["source"] = k
         else:
             self.choice["target"] = k
+        self._save_choice(quiet=True)               # enregistré à chaque clic : rien à oublier
         self.refresh()
 
-    def _save_choice(self):
-        if self.cand is None or self.cand[2] != self.st.frame or self.choice["source"] is None:
-            self.say("détectez d'abord sur cette image et choisissez au moins la source")
+    def _save_choice(self, quiet: bool = False):
+        if self.cand is None or self.cand[2] != self.st.frame:
+            if not quiet:
+                self.say("détectez d'abord sur cette image (« Détecter ici »), puis cliquez sur les masques")
             return
         f = self.selection_path()
         sel = json.loads(f.read_text())["choices"] if f.exists() else []
-        sel = [c for c in sel if c["frame"] != self.st.frame] + [
-            {"frame": int(self.st.frame), "source": self.choice["source"], "target": self.choice["target"]}]
+        sel = [c for c in sel if c["frame"] != self.st.frame]
+        if self.choice["source"] is not None:        # plus rien de choisi sur cette image : choix retiré
+            sel.append({"frame": int(self.st.frame), "source": self.choice["source"], "target": self.choice["target"]})
         f.parent.mkdir(exist_ok=True)
         f.write_text(json.dumps({"choices": sorted(sel, key=lambda c: c["frame"])}, indent=1))
-        self.say(f"{self.st.ep_name} : choix enregistré à l'image {self.st.frame}")
+        if not quiet:
+            self.say(f"{self.st.ep_name} : choix enregistré à l'image {self.st.frame}")
         self._refresh_lists()
+
+    def _track_here(self):
+        if not self.st.ep_name:
+            return
+        f = self.selection_path()
+        if not f.exists() or not json.loads(f.read_text())["choices"]:
+            self.say(f"{self.st.ep_name} : rien à suivre — « Détecter ici » sur une image où la main est loin, "
+                     f"puis cliquez sur la pièce à prendre (vert) et sur la cible (rouge)")
+            return
+        self._run(["track", "--episodes", self.st.ep_name])
 
     def _clear_choices(self):
         if self.st.ep_name and self.selection_path().exists():
