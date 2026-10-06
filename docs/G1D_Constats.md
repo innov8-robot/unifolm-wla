@@ -863,3 +863,5 @@ Quatre relectures indépendantes (téléop, données et modèle, sim, scripts et
 - mix n'a rien oublié de l'empilement main par main et suit mieux les grands mouvements (25,7 contre 32,4 mm).
 - Deux mains : écart deux fois plus grand en absolu, mais les démos vont deux fois plus vite (11 s contre 22 s par épisode) ; le modèle part dans la bonne direction (39 contre 80 mm). L'instant des prises est moins bien appris (écart de pince 0,32 à droite contre 0,03 main par main).
 - Segments : comparables aux autres en proportion du mouvement ; la fusion reste la phase la moins précise sur les grands déplacements.
+
+**[VÉRIFIÉ] novares_stack_3 (6 octobre 2026)** — 178 démos, 3 pièces empilées main droite, entraîné depuis le modèle de BASE (15 000 pas). Boucle ouverte, démos vues, main droite, une requête tous les 15 pas : écart au pas 30 médian 22,8 mm (tenir la pose : 94,4 mm), 21,6 mm quand la main bouge de plus de 5 cm (80 requêtes sur 96), écart de pince 0,24. Fin d'entraînement : modèle sauvegardé, puis processus resté bloqué à la fermeture (attente sur un verrou, 9 h 30, 21 Go de GPU tenus) ; arrêté à la main. Première occurrence.
