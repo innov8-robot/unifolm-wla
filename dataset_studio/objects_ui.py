@@ -349,7 +349,7 @@ class ObjectsDialog(QDialog):
 
     def _goto_example(self, it):
         e = it.data(Qt.UserRole)
-        self.st.load_task(self.st.ds.path, select=e["episode"])
+        self.st.select_episode(e["episode"])
         self.st.seek(e["frame"])
 
     def _random_frame(self):
@@ -357,9 +357,8 @@ class ObjectsDialog(QDialog):
         if not eps:
             return
         ep = random.choice(eps)
-        n = len(json.loads((ep / "data.json").read_text())["data"])
-        self.st.load_task(self.st.ds.path, select=ep.name)
-        self.st.seek(random.randrange(n))
+        self.st.select_episode(ep.name)              # charge cet épisode seulement
+        self.st.seek(random.randrange(max(1, self.st._n())))
 
     def _detect_here(self):
         if self.st.ep_name:

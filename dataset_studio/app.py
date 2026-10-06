@@ -505,6 +505,16 @@ class Studio(QMainWindow):
         else:
             self.doc = None
 
+    def select_episode(self, name: str) -> bool:
+        """Sélectionne un épisode dans la liste SANS recharger la tâche (qui relit tous les data.json)."""
+        for r in range(self.table.rowCount()):
+            it = self.table.item(r, 0)
+            if it is not None and it.data(Qt.UserRole) == name:
+                if name != self.ep_name:
+                    self.table.selectRow(r)
+                return True
+        return False
+
     def _selected_names(self) -> list[str]:
         rows = sorted({i.row() for i in self.table.selectedIndexes()})
         return [self.table.item(r, 0).data(Qt.UserRole) for r in rows]
