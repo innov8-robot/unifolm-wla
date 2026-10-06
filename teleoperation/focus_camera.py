@@ -14,7 +14,8 @@ bague doucement : la netteté monte, passe par un maximum, puis redescend — re
 Visez au moins la valeur de l'autre œil (référence) ; la zone centrale doit contenir des détails
 (pièces, marqueur ArUco), pas un mur uni.
 
-Touches : q / Échap = quitter · r = remettre les maxima à zéro.
+Touches : q / Échap = quitter · r = remettre les maxima à zéro. Fenêtre : 1800 px de large par défaut
+(``--width 1400`` pour la réduire) ; elle reste redimensionnable à la souris.
 """
 import argparse
 import time
@@ -40,6 +41,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--cam", choices=list(PORTS), default="tete")
     ap.add_argument("--ip", default="192.168.123.164")
+    ap.add_argument("--width", type=int, default=1800, help="largeur de la fenêtre en pixels (défaut 1800)")
     a = ap.parse_args()
 
     ctx = zmq.Context()
@@ -53,6 +55,8 @@ def main() -> None:
     ema, best = {}, {}
     win = f"Mise au point — {a.cam}"
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(win, a.width, int(a.width * 0.75))
+    sized = False
     last = time.time()
     while True:
         try:
@@ -78,14 +82,20 @@ def main() -> None:
             col = np.vstack([view, zoom])
             ratio = ema[name] / best[name] if best[name] > 0 else 0
             color = (60, 200, 60) if ratio > 0.95 else (40, 170, 240) if ratio > 0.8 else (60, 60, 230)
-            cv2.rectangle(col, (0, 0), (col.shape[1], 64), (20, 20, 20), -1)
-            cv2.putText(col, f"{name}", (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-            cv2.putText(col, f"nettete {ema[name]:6.0f}   max {best[name]:6.0f}", (10, 54),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.75, color, 2)
+            cv2.rectangle(col, (0, 0), (col.shape[1], 78), (20, 20, 20), -1)
+            cv2.putText(col, f"{name}", (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
+            cv2.putText(col, f"nettete {ema[name]:5.0f}  max {best[name]:5.0f}", (10, 62),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.95, color, 2)
             bw = int((col.shape[1] - 20) * min(1.0, ratio))
-            cv2.rectangle(col, (10, 60), (10 + bw, 63), color, -1)
+            cv2.rectangle(col, (10, 70), (10 + bw, 75), color, -1)
             tiles.append(col)
-        cv2.imshow(win, np.hstack(tiles))
+        out = np.hstack(tiles)
+        scale = a.width / out.shape[1]
+        out = cv2.resize(out, (a.width, int(out.shape[0] * scale)), interpolation=cv2.INTER_LINEAR)
+        if not sized:
+            cv2.resizeWindow(win, out.shape[1], out.shape[0])
+            sized = True
+        cv2.imshow(win, out)
         if time.time() - last > 1.0:
             print("   ".join(f"{n}: {ema[n]:6.0f} (max {best[n]:6.0f})" for n in views), flush=True)
             last = time.time()
