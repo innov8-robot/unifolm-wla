@@ -71,6 +71,14 @@ Les exports sont créés à côté de la tâche, apparaissent dans le menu **Tâ
 
 Stockage : `<tâche>/tags.json` (étiquettes) et `episode_XXXX/segments.json` (segments, pas inclus). Les segments suivent les épisodes renumérotés ou mis à la corbeille, et un rognage les décale.
 
+## Étiqueter « bon » / « mauvais » pour l'apprentissage par renforcement (RECAP)
+
+Sur un dataset d'essais en mode politique (`…_policy`), le bouton **＋ bon / mauvais (RL)** crée deux étiquettes : `bon` (vert) et `mauvais` (rouge). Découpez les passages comme pour les sous-tâches (I, puis **1** T pour bon, **2** T pour mauvais).
+
+Lors de l'étiquetage RECAP (`g1d_wla.recap label`), ces passages **remplacent** le jugement automatique du modèle de valeur et les corrections au grip : `bon` = avantage positif, `mauvais` = négatif. Les pas sans étiquette gardent l'étiquette automatique. Exemple : une pile de 3 où la 3ᵉ pièce tombe → `bon` sur les deux premières poses, `mauvais` sur la 3ᵉ.
+
+Après un étiquetage RECAP, le graphique « Intervention / avantage » montre l'étiquette calculée par pas (1 positif, 0 négatif) : c'est là qu'on voit où corriger.
+
 ## Convertir au format WLA
 
 Le bouton **Convertir au format WLA** lance `g1d_wla.convert_teleop` sur la tâche affichée, avec l'env `.venv` du dépôt. Le résultat va dans :

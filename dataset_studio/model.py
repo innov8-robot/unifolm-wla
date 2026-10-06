@@ -29,6 +29,8 @@ EP_RE = re.compile(r"^episode_(\d+)$")
 TAG_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 TRASH = ".corbeille"
 TAGS_FILE = "tags.json"
+#: étiquettes d'avantage manuel pour RECAP (g1d_wla.recap les applique en priorité)
+RL_TAGS = (("bon", "#3fd67f"), ("mauvais", "#f4635e"))
 SEGMENTS_FILE = "segments.json"
 
 #: libellés des images selon la disposition (mêmes conventions que g1d_wla.convert_teleop)
@@ -312,6 +314,15 @@ class TaskDataset:
         if any(t["name"] == name for t in tags):
             raise ValueError(f"l'étiquette « {name} » existe déjà")
         self.save_tags(tags + [{"name": name, "instruction": instruction.strip()}])
+
+    def ensure_rl_tags(self) -> list[str]:
+        """Ajoute les étiquettes « bon » / « mauvais » (avantage manuel RECAP) si absentes. Rend celles ajoutées."""
+        tags = self.tags()
+        have = {t["name"] for t in tags}
+        new = [n for n, _c in RL_TAGS if n not in have]
+        if new:
+            self.save_tags(tags + [{"name": n, "instruction": ""} for n in new])
+        return new
 
     def set_tag_instruction(self, name: str, instruction: str) -> None:
         self.save_tags([{**t, "instruction": instruction.strip()} if t["name"] == name else t for t in self.tags()])

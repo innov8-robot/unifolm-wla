@@ -11,6 +11,8 @@ Boucle d'amélioration (docs/G1D_Constats.md §15) :
    l'opérateur sont positives ; l'étiquette est écrite par pas (``advantage`` : 1 / 0) dans data.json ;
 5. conversion (``g1d_wla.convert_teleop``, colonnes advantage/intervention) puis fine-tuning avec
    ``advantage_key`` dans la config de données : le prompt reçoit « Advantage: positive|negative ».
+   Étiquettes MANUELLES : les segments « bon » / « mauvais » posés dans le Dataset Studio
+   (``episode_XXXX/segments.json``) remplacent l'étiquette calculée sur leurs pas (priorité sur tout).
    À l'exécution, le serveur demande « positive » (``--advantage positive``).
 
 Le modèle de valeur : ResNet18 ImageNet GELÉ sur la tête (``color_0``) et le poignet droit (dernière
@@ -46,6 +48,30 @@ IMG_HW = (224, 224)
 
 #: pas restants prédits sous lesquels la tâche est considérée finie (étiquette positive)
 DONE_STEPS = 5
+#: étiquettes du Dataset Studio qui imposent l'avantage de leurs pas
+MANUAL_TAGS = {"bon": 1.0, "mauvais": 0.0}
+
+
+def apply_manual_labels(ep: Path, adv: np.ndarray) -> int:
+    """Impose 1 / 0 sur les pas des segments « bon » / « mauvais » de l'épisode. Rend le nombre de pas imposés."""
+    f = ep / "segments.json"
+    if not f.exists():
+        return 0
+    try:
+        segs = json.loads(f.read_text()).get("segments", [])
+    except Exception:
+        log.warning("%s : segments.json illisible, étiquettes manuelles ignorées", ep)
+        return 0
+    k = 0
+    for sg in segs:
+        val = MANUAL_TAGS.get(sg.get("tag"))
+        if val is None:
+            continue
+        a, b = max(0, int(sg["start"])), min(len(adv) - 1, int(sg["end"]))
+        if b >= a:
+            adv[a:b + 1] = val
+            k += b - a + 1
+    return k
 
 def episode_dirs(roots) -> list[Path]:
     out = []
@@ -289,16 +315,18 @@ def cmd_label(a) -> None:
         adv = ((ideal < DONE_STEPS) | (progress >= a.threshold * ideal)).astype(np.float32)
         adv[nominal == 0] = adv[max(0, n - 2)] if n > 1 else 1.0
         adv[inter > 0.5] = 1.0                             # corrections de l'opérateur : positives
+        n_man = apply_manual_labels(ep, adv)               # « bon » / « mauvais » du Studio : priorité
         for st, x in zip(doc["data"], adv):
             st["advantage"] = float(x)
-        doc["info"]["advantage_labeling"] = {"value": str(a.value), "threshold": a.threshold, "chunk": a.chunk}
+        doc["info"]["advantage_labeling"] = {"value": str(a.value), "threshold": a.threshold, "chunk": a.chunk,
+                                             "manual_steps": n_man}
         (ep / "data.json").write_text(json.dumps(doc))
         pol = inter < 0.5
         n_pos += int((adv[pol] > 0.5).sum())
         n_neg += int((adv[pol] < 0.5).sum())
         n_int += int((~pol).sum())
-        log.info("%s : %s, politique %d pas (%d positifs), opérateur %d pas", ep.name,
-                 doc["info"].get("outcome"), int(pol.sum()), int((adv[pol] > 0.5).sum()), int((~pol).sum()))
+        log.info("%s : %s, politique %d pas (%d positifs), opérateur %d pas, imposés à la main %d pas", ep.name,
+                 doc["info"].get("outcome"), int(pol.sum()), int((adv[pol] > 0.5).sum()), int((~pol).sum()), n_man)
     tot = max(1, n_pos + n_neg)
     log.info("pas de la politique : %d positifs (%.0f %%), %d négatifs | pas de l'opérateur (positifs) : %d",
              n_pos, 100 * n_pos / tot, n_neg, n_int)

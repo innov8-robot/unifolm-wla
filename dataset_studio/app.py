@@ -23,8 +23,8 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QComboBox, QDial
                                QVBoxLayout, QWidget)
 
 from .charts import SignalChart
-from .model import (CAMERA_LABELS, TaskDataset, find_tasks, guess_layout, load_doc, load_segments, signals,
-                    summarize)
+from .model import (CAMERA_LABELS, RL_TAGS, TaskDataset, find_tasks, guess_layout, load_doc, load_segments,
+                    signals, summarize)
 from .theme import ACCENT, KO, MUTED, OK, QSS, TAG_COLORS, WARN
 
 REPO = Path(__file__).resolve().parents[1]
@@ -378,8 +378,12 @@ class Studio(QMainWindow):
         srow = QHBoxLayout()
         b_seg_del = button("Supprimer le segment", "Quiet")
         b_seg_del.clicked.connect(self._del_segment)
+        b_rl = button("＋ bon / mauvais (RL)", "Quiet",
+                      "Étiquettes d'avantage manuel : remplacent le jugement du modèle de valeur de RECAP")
+        b_rl.clicked.connect(self._rl_tags)
         srow.addWidget(b_seg_del)
         srow.addStretch()
+        srow.addWidget(b_rl)
         rl.addLayout(srow)
         self.tag_usage_lbl = QLabel("")
         self.tag_usage_lbl.setWordWrap(True)
@@ -694,6 +698,9 @@ class Studio(QMainWindow):
 
     # ------------------------------------------------------------------ étiquettes et segments
     def _tag_color(self, name: str) -> str:
+        rl = dict(RL_TAGS)
+        if name in rl:
+            return rl[name]
         names = [t["name"] for t in self.ds.tags()] if self.ds else []
         return TAG_COLORS[names.index(name) % len(TAG_COLORS)] if name in names else MUTED
 
@@ -707,7 +714,7 @@ class Studio(QMainWindow):
         self.tag_combo.clear()
         for i, t in enumerate(tags):
             self.tag_combo.addItem(f"{i + 1} · {t['name']}" if i < 9 else t["name"], t["name"])
-            self.tag_combo.setItemData(i, QColor(TAG_COLORS[i % len(TAG_COLORS)]), Qt.ForegroundRole)
+            self.tag_combo.setItemData(i, QColor(self._tag_color(t["name"])), Qt.ForegroundRole)
         names = [t["name"] for t in tags]
         if cur in names:
             self.tag_combo.setCurrentIndex(names.index(cur))
@@ -753,6 +760,13 @@ class Studio(QMainWindow):
             return
         self.say(f"étiquette « {d.name.text().strip()} » créée", OK)
         self._refresh_tags(select=d.name.text().strip())
+
+    def _rl_tags(self):
+        if not self.ds:
+            return
+        new = self.ds.ensure_rl_tags()
+        self.say(f"étiquettes RL ajoutées : {', '.join(new)}" if new else "étiquettes RL déjà présentes", OK)
+        self._refresh_tags(select="bon")
 
     def _edit_tag(self):
         name = self._current_tag()
