@@ -30,6 +30,13 @@ PIP=("$CONDA" run -n "$ENV_NAME" --no-capture-output python -m pip)
 "${PIP[@]}" install -e "$SDK"                       # tire cyclonedds==0.10.2
 "${PIP[@]}" install -e "$XR/teleop/teleimager" --no-deps
 "${PIP[@]}" install -e "$XR/teleop/televuer"
+# voix naturelle des annonces (Piper, hors ligne) + voix française ; sans elle : repli sur spd-say
+"${PIP[@]}" install piper-tts
+VOICES="$HOME/.local/share/piper-voices"; mkdir -p "$VOICES"
+for ext in onnx onnx.json; do
+    [[ -f "$VOICES/fr_FR-siwis-medium.$ext" ]] || curl -sSLf -o "$VOICES/fr_FR-siwis-medium.$ext" \
+        "https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/siwis/medium/fr_FR-siwis-medium.$ext"
+done
 if [[ "${WITH_DEX_RETARGETING:-0}" == "1" ]]; then
     "${PIP[@]}" install -e "$XR/teleop/robot_control/dex-retargeting"
 fi
