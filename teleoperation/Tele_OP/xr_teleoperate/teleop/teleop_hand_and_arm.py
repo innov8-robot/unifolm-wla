@@ -80,6 +80,8 @@ READY          = False  # Ready to (1) enter START state, (2) enter RECORD_RUNNI
 RECORD_RUNNING = False  # True if [Recording]
 RECORD_TOGGLE  = False  # Toggle recording state
 RECORD_CANCEL  = False  # Discard the current in-progress recording
+IPC_PENDING    = set()  # commandes reçues par IPC (Inference Studio), consommées par la boucle : a x y b z g
+HB_EXTRA       = {}     # état publié en plus par le heartbeat IPC (mode politique, gravité zéro, caméras…)
 
 #  -------        ---------                -----------                -----------            ---------
 #   state          [Ready]      ==>        [Recording]     ==>         [AutoSave]     -->     [Ready]
@@ -102,6 +104,8 @@ def on_press(key):
         STOP = True
     elif key == 's' and START == True:
         RECORD_TOGGLE = True
+    elif key in ('a', 'x', 'y', 'b', 'z', 'g'):
+        IPC_PENDING.add(key)                      # traité au prochain tour de boucle, comme un bouton
     else:
         logger_mp.warning(f"[on_press] {key} was pressed, but no action is defined for this key.")
 
@@ -113,6 +117,7 @@ def get_state() -> dict:
         "STOP": STOP,
         "READY": READY,
         "RECORD_RUNNING": RECORD_RUNNING,
+        **HB_EXTRA,
     }
 
 if __name__ == '__main__':
@@ -477,7 +482,7 @@ if __name__ == '__main__':
                 left_wrist_img = img_client.get_left_wrist_frame()
             if camera_config['right_wrist_camera']['enable_zmq']:
                 right_wrist_img = img_client.get_right_wrist_frame()
-            cam_watch.update({n: f for n, f in (("tête", head_img), ("poignet gauche", left_wrist_img),
+            cam_missing = cam_watch.update({n: f for n, f in (("tête", head_img), ("poignet gauche", left_wrist_img),
                                                 ("poignet droit", right_wrist_img)) if n in cam_names},
                              recording=RECORD_RUNNING)
             if xr_need_local_img and camera_config['head_camera']['enable_zmq'] and head_img.bgr is not None:
@@ -524,17 +529,20 @@ if __name__ == '__main__':
 
             # get xr's tele data
             tele_data = tv_wrapper.get_tele_data()
+            ipc_keys = set()
+            while IPC_PENDING:
+                ipc_keys.add(IPC_PENDING.pop())
 
             # record control via right controller (rising-edge): A = start/stop toggle, B = cancel.
             # A is only bound to recording when NOT in motion mode (there A = quit teleop).
             if args.record and args.input_mode == "controller" and START:
                 rA = bool(tele_data.right_ctrl_aButton)
                 rB = bool(tele_data.right_ctrl_bButton)
-                if rA and not prev_rA and not args.motion:
+                if ((rA and not prev_rA) or "a" in ipc_keys) and not args.motion:
                     RECORD_TOGGLE = True
                     if bridge is not None and RECORD_RUNNING:     # fin sans X/Y : issue inconnue (ignorée par RECAP)
                         recorder.set_episode_info({"outcome": "unknown"})
-                if rB and not prev_rB:
+                if (rB and not prev_rB) or "b" in ipc_keys:
                     RECORD_CANCEL = True
                 prev_rA, prev_rB = rA, rB
             # Y gauche (téléop, hors mode politique) : PAUSE du suivi -> bras vers la posture de calibration
@@ -544,7 +552,7 @@ if __name__ == '__main__':
             # état de Y suivi à CHAQUE tour (sinon le Y qui termine un essai « raté » était vu, au tour suivant,
             # comme un nouvel appui et mettait aussi les bras en garde)
             cY = bool(tele_data.left_ctrl_bButton) if args.input_mode == "controller" else False
-            y_edge = cY and not prev_cY
+            y_edge = (cY and not prev_cY) or ("g" in ipc_keys and not RECORD_RUNNING)
             prev_cY = cY
             if (bridge is None or not RECORD_RUNNING) and args.input_mode == "controller" and START and args.arm == "G1_29":
                 if y_edge and bridge is not None and cal["paused"]:
@@ -574,7 +582,7 @@ if __name__ == '__main__':
             # la main avant un essai ; second clic = bras tenus à la pose atteinte. Coupée d'office dès que
             # l'essai démarre (A) : la politique repart alors de la pose mesurée
             cLT = bool(getattr(tele_data, "left_ctrl_thumbstick", False)) if args.input_mode == "controller" else False
-            lt_edge = cLT and not prev_lthumb
+            lt_edge = (cLT and not prev_lthumb) or "z" in ipc_keys
             prev_lthumb = cLT
             zero_g_ok = (bridge is not None and not RECORD_RUNNING and START and args.arm == "G1_29"
                          and args.input_mode == "controller")
@@ -598,8 +606,10 @@ if __name__ == '__main__':
             if bridge is not None and args.record and START:
                 lX, lY = bool(tele_data.left_ctrl_aButton), bool(tele_data.left_ctrl_bButton)
                 if RECORD_RUNNING and not RECORD_CANCEL and not tele_data.right_ctrl_bButton \
-                        and ((lX and not prev_lX) or (lY and not prev_lY)):
-                    ok_ep = lX and not prev_lX
+                        and ((lX and not prev_lX) or (lY and not prev_lY) or ipc_keys & {"x", "y"}):
+                    ok_ep = (lX and not prev_lX) or "x" in ipc_keys
+                    HB_EXTRA["LAST_OUTCOME"] = "success" if ok_ep else "failure"
+                    HB_EXTRA["N_OK" if ok_ep else "N_KO"] = HB_EXTRA.get("N_OK" if ok_ep else "N_KO", 0) + 1
                     recorder.set_episode_info({"success_step": episode_steps if ok_ep else None,
                                                "outcome": "success" if ok_ep else "failure"})
                     logger_mp.info(f"🏁  Essai {'RÉUSSI' if ok_ep else 'RATÉ'} au pas {episode_steps}")
@@ -808,6 +818,10 @@ if __name__ == '__main__':
                 if args.torso_yaw_index is not None:
                     arm_ctrl.hold_torso_yaw()
             arm_ctrl.ctrl_dual_arm(sol_q, sol_tauff)
+            HB_EXTRA.update(POLICY=bridge is not None, ZERO_G=bool(zero_g), GUARD=bool(cal["paused"]),
+                            EPISODE_STEPS=int(episode_steps), CAM_MISSING=list(cam_missing or []),
+                            SHARP=[round(x) for x in cam_watch.sharp] if cam_watch.sharp else None,
+                            POLICY_FAILED=bool(policy_failed), INTERVENTION=bool(policy_intervention))
 
             # record data (un pas sur RECORD_STRIDE si la boucle tourne plus vite que l'enregistrement)
             loop_count += 1

@@ -64,6 +64,13 @@ class IPC_Server:
         "CMD_START": "r",          # launch
         "CMD_STOP": "q",           # exit
         "CMD_RECORD_TOGGLE": "s",  # start & stop (toggle record)
+        # G1-D (Inference Studio) : mêmes effets que les boutons de la manette
+        "CMD_TRIAL": "a",          # A droit : lancer / arrêter l'essai (mode politique) ou l'enregistrement
+        "CMD_SUCCESS": "x",        # X gauche : essai réussi
+        "CMD_FAILURE": "y",        # Y gauche : essai raté
+        "CMD_CANCEL": "b",         # B droit : annuler l'essai
+        "CMD_ZERO_G": "z",         # clic joystick gauche : gravité zéro (hors essai)
+        "CMD_GUARD": "g",          # Y gauche hors essai : position de garde
     }
 
     def __init__(self, on_press=None, get_state=None, hb_fps=10.0):
