@@ -223,6 +223,40 @@ def cmd_detect(a) -> None:
             f"(scores {np.round(sc[keep], 2).tolist() if keep else []})")
 
 
+def cmd_add(a) -> None:
+    """Ajoute À LA MAIN une pièce que la détection a ratée (pince devant, reflet…) : SAM2 découpe l'objet
+    dans la boîte ``--box x0 y0 x1 y1`` de l'image ``--frame`` ; le masque rejoint les candidats de cette image."""
+    import torch
+    from sam2.build_sam import build_sam2
+    from sam2.sam2_image_predictor import SAM2ImagePredictor
+
+    task = Path(a.task)
+    ep = a.episodes[0]
+    doc = json.loads((task / ep / "data.json").read_text())
+    f0 = min(a.frame, len(doc["data"]) - 1)
+    rgb = read_rgb(task / ep / doc["data"][f0]["colors"][HEAD_CAM])
+    pred = SAM2ImagePredictor(build_sam2("configs/sam2.1/sam2.1_hiera_l.yaml", str(CKPT / "sam2.1_hiera_large.pt"),
+                                         device="cuda"))
+    with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
+        pred.set_image(rgb)
+        masks, scores, _ = pred.predict(box=np.array(a.box, np.float32), multimask_output=False)
+    m = np.asarray(masks[0]) > 0
+    if m.sum() < 20:
+        raise SystemExit("rien trouvé dans ce rectangle : encadrez la pièce de plus près")
+    od = task / ep / "objects"
+    od.mkdir(exist_ok=True)
+    cf = od / f"{a.object}_candidates_{f0:05d}.npz"
+    if cf.exists():
+        d = np.load(cf)
+        old, sc = unpack(d), d["scores"]
+    else:
+        old, sc = np.zeros((0,) + m.shape, bool), np.zeros(0)
+    allm = np.concatenate([old, m[None]])
+    np.savez_compressed(cf, masks=np.packbits(allm, axis=-1), shape=np.array(allm.shape),
+                        scores=np.append(sc, -1.0), frame=f0)          # score -1 = ajoutée à la main
+    say(f"{ep} image {f0} : pièce ajoutée à la main (n° {len(allm)}, {int(m.sum())} px, confiance SAM2 {float(scores[0]):.2f})")
+
+
 def selection_signature(choices: list) -> str:
     """Empreinte d'un choix (image, source, cible) : le suivi l'enregistre ; si le choix change, l'épisode
     est « modifié » et « Suivre tout » le refait."""
@@ -361,13 +395,20 @@ def main() -> None:
     t.add_argument("--object", default="piece")
     t.add_argument("--episodes", nargs="*")
     t.add_argument("--force", action="store_true", help="refaire aussi les épisodes déjà à jour")
+    ad = sub.add_parser("add")
+    ad.add_argument("--task", required=True)
+    ad.add_argument("--object", default="piece")
+    ad.add_argument("--episodes", nargs=1, required=True)
+    ad.add_argument("--frame", type=int, required=True)
+    ad.add_argument("--box", type=int, nargs=4, required=True, metavar=("X0", "Y0", "X1", "Y1"))
     p = sub.add_parser("preview")
     p.add_argument("--task", required=True)
     p.add_argument("--object", default="piece")
     p.add_argument("--episode", required=True)
     p.add_argument("--out")
     a = ap.parse_args()
-    {"signature": cmd_signature, "detect": cmd_detect, "track": cmd_track, "preview": cmd_preview}[a.cmd](a)
+    {"signature": cmd_signature, "detect": cmd_detect, "track": cmd_track, "add": cmd_add,
+     "preview": cmd_preview}[a.cmd](a)
 
 
 if __name__ == "__main__":

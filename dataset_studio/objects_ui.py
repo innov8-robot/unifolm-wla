@@ -192,6 +192,12 @@ class ObjectsDialog(QDialog):
         r3.addWidget(b_det)
         r3.addWidget(b_det_all)
         right.addLayout(r3)
+        r3b = QHBoxLayout()
+        b_add_piece = QPushButton("＋ Ajouter comme pièce (rectangle)")
+        b_add_piece.setToolTip("Pièce non détectée (pince devant…) : glissez un rectangle autour, puis ce bouton")
+        b_add_piece.clicked.connect(self._add_piece)
+        r3b.addWidget(b_add_piece)
+        right.addLayout(r3b)
         right.addWidget(h2("3 · CHOISIR : 1er = source (vert), 2e = cible (rouge)"))
         r4 = QHBoxLayout()
         b_clear = QPushButton("Effacer le choix  [0]")
@@ -433,6 +439,17 @@ class ObjectsDialog(QDialog):
         self._save_choice(quiet=True)               # enregistré à chaque clic : rien à oublier
         self.refresh()
         self.st.reload_objects()
+
+    def _add_piece(self):
+        if not self.st.ep_name:
+            return
+        if not self.pending_box:
+            self.say("glissez d'abord un rectangle autour de la pièce non détectée")
+            return
+        box = [str(int(v)) for v in self.pending_box]
+        self.pending_box = None
+        self.cand = None                                # relu après le calcul
+        self._run(["add", "--episodes", self.st.ep_name, "--frame", str(self.st.frame), "--box", *box])
 
     def _step(self, d: int):
         self.st._step_episode(d)                       # le choix courant est déjà enregistré
