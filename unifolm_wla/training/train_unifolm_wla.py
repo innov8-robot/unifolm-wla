@@ -394,7 +394,8 @@ class VLATrainer(TrainerUtils):
 
         self._finalize_training()
         # modèle final écrit : les sauvegardes intermédiaires ne servent plus (disque : 12,5 Go chacune)
-        if getattr(self.config.trainer, "keep_last_checkpoints", 0) and self.accelerator.is_main_process:
+        if getattr(self.config.trainer, "keep_last_checkpoints", 0) and self.accelerator.is_main_process \
+                and not getattr(self.config.trainer, "keep_steps_after_final", False):   # True : comparer plusieurs durées
             for f in os.listdir(self.checkpoint_dir):
                 if f.startswith("steps_"):
                     os.remove(os.path.join(self.checkpoint_dir, f))

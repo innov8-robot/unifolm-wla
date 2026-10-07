@@ -13,6 +13,7 @@ STEPS=${STEPS:-15000}
 SAVE_EVERY=${SAVE_EVERY:-2500}      # sauvegarde reprenable tous les N pas (seule la dernière est gardée)
 RESUME=${RESUME:-0}                 # RESUME=1 : reprendre au dernier checkpoints/steps_N du run
 INIT=${INIT:-}                      # INIT=<model.safetensors> : partir de ce modèle au lieu du modèle Base
+KEEP_STEPS=${KEEP_STEPS:-0}         # KEEP_STEPS=1 : garder la dernière sauvegarde intermédiaire après le modèle final
 say() { echo "[$(date '+%F %T')] $*"; }
 OWN=0
 cleanup() { [[ $OWN == 1 ]] && rm -f "$BUSY"; }
@@ -43,5 +44,6 @@ run_id=$RUN bash examples/unifolm_wla/train_files/run_finetune_g1d.sh \
     --trainer.gradient_accumulation_steps 1 --trainer.max_train_steps $STEPS --trainer.num_warmup_steps 200 \
     --trainer.save_interval $SAVE_EVERY --trainer.keep_last_checkpoints 1 \
     --trainer.eval_interval 1000000 --trainer.logging_frequency 50 "${EXTRA[@]}" \
+    $( [[ $KEEP_STEPS == 1 ]] && echo --trainer.keep_steps_after_final true ) \
     && say "entraînement terminé : playground/Checkpoints/$RUN/final_model/model.safetensors" \
     || { say "ÉCHEC entraînement"; exit 1; }
