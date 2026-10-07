@@ -867,3 +867,15 @@ Quatre relectures indépendantes (téléop, données et modèle, sim, scripts et
 **[VÉRIFIÉ] novares_stack_3 (6 octobre 2026)** — 178 démos, 3 pièces empilées main droite, entraîné depuis le modèle de BASE (15 000 pas). Boucle ouverte, démos vues, main droite, une requête tous les 15 pas : écart au pas 30 médian 22,8 mm (tenir la pose : 94,4 mm), 21,6 mm quand la main bouge de plus de 5 cm (80 requêtes sur 96), écart de pince 0,24. Fin d'entraînement : modèle sauvegardé, puis processus resté bloqué à la fermeture (attente sur un verrou, 9 h 30, 21 Go de GPU tenus) ; arrêté à la main. Première occurrence.
 
 **[VÉRIFIÉ] Œil gauche de la caméra de tête flou (6 octobre 2026)** — netteté (variance du laplacien) de l'œil GAUCHE, celui que voit le modèle : ≈ 200 jusqu'à l'épisode 39 de `novares_VP`, ≈ 35 à partir de l'épisode 40 (145 épisodes sur 185) et en direct ensuite (43), alors que l'œil droit reste à ≈ 230-250. Mise au point (ou objectif sali) changée pendant la collecte. Outil : `teleoperation/focus_camera.py` (flux en direct, netteté, zoom). Les épisodes flous ne doivent pas être mélangés sans réflexion aux nets : le modèle verrait au robot une image différente de celle de ses données.
+
+**[VÉRIFIÉ] novares_vp et novares_stack_3_v2 en boucle ouverte (7 octobre 2026)** — démos vues, main droite, une requête tous les 15 pas, écart au pas 30 (« tenir la pose » entre parenthèses).
+
+| Modèle | Démos testées | Écart médian | Écart de pince |
+|---|---|---|---|
+| novares_vp (visual prompt, depuis la base, 143 démos coloriées) | toutes | 24,8 mm (97) | 0,08 |
+| novares_stack_3_v2 (229 démos, depuis stack_3) | toutes | 23,6 mm (96) | 0,27 |
+| novares_stack_3_v2 | les 51 démos du 6/10 (2e empilement) | 34,6 mm (103) | 0,06 |
+| novares_stack_3 (ancien, 178 démos) | les mêmes 51 démos, jamais vues | 47,6 mm (103) | 0,26 |
+
+- v2 garde la précision sur les anciennes démos et apprend les nouvelles (2e empilement) : 47,6 → 34,6 mm, prises bien mieux placées dans le temps (pince 0,26 → 0,06).
+- vp : précision du même ordre que les autres modèles d'empilement, instant des prises bien appris (0,08). Le test réel dira s'il suit bien les couleurs (cas source à droite de la cible).
