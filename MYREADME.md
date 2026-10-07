@@ -69,6 +69,7 @@ Par ordre de priorité. Cocher au fur et à mesure.
   - [ ] le contenu des 35 moteurs enregistrés, pour savoir s'ils contiennent le tangage du buste ;
   - [ ] la hauteur de colonne, à ajouter à l'enregistrement ;
   - [ ] si possible, la calibration de la stéréo de tête.
+- [ ] **Early stopping** : calculer la perte de flow matching sur les épisodes de validation (bruit et t fixés) tous les N pas, dans le processus d'entraînement (pas de 2e modèle en mémoire GPU) ; garder la meilleure sauvegarde, arrêter quand elle ne s'améliore plus. Valider ensuite en boucle ouverte sur les mêmes épisodes.
 - [ ] **Installer le poste de démo** : une table à environ 0,87 m et le buste penché d'environ 0.166 rad.
 - [x] **Valider la chaîne complète en sim** : 150 démos expertes de la tâche cube, fine-tuning de 3 000 pas, puis **23 prises sur 30** positions jamais vues. Le zero-shot faisait 0 sur 20. Voir « Validation en sim » plus bas.
 - [x] **Améliorer la vitesse et réduire le nombre de démos, en sim** : chunks entiers, 28/30 en 151 pas au lieu de 222. Real-time chunking ajouté, avec raccord doux : 25/30 en 151 pas en replanifiant tous les 10 pas. **10 démos suffisent** pour 25/30, et 25 démos donnent 30/30.
